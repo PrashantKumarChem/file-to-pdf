@@ -32,6 +32,7 @@ PYTHON_EXE = str(_CONSOLE_PYTHON if _CONSOLE_PYTHON.exists() else Path(sys.execu
 TEMPLATE_BASE_DIR = str(Path(__file__).parent / "nbconvert-templates")
 TEMPLATE_NAME = "pdf-nowrap-fix"
 LOG_PATH = Path(__file__).parent / "conversion_log.txt"
+LOG_MAX_BYTES = 1_000_000
 STAGING_DIR = Path(__file__).parent / "_staging"
 # Default output: a plain folder directly under the user profile, which is
 # reliably writable. On this machine a whole set of locations are currently
@@ -126,7 +127,7 @@ def convert_notebook(nb_path: Path, output_dir: Path) -> Result:
             _append_log(full_log)
             return Result(False, "Failed: PDF missing after conversion (see log)", full_log, None)
 
-        return _save_pdf_bytes(produced.read_bytes(), nb_path.stem, output_dir, log_chunks)
+        return _save_pdf_bytes(produced.read_bytes(), nb_path.stem, output_dir, log_chunks, nb_path)
 
 
 def convert_file(src_path: Path, output_dir: Path) -> Result:
@@ -145,7 +146,7 @@ def convert_file(src_path: Path, output_dir: Path) -> Result:
         return Result(False, f"Failed: {e}", full_log, None)
     # Keep the source extension in the PDF name (e.g. Compound1.json.pdf) so a
     # notebook and a same-named data file don't both collapse to Compound1.pdf.
-    return _save_pdf_bytes(pdf_bytes, src_path.name, output_dir, log_chunks)
+    return _save_pdf_bytes(pdf_bytes, src_path.name, output_dir, log_chunks, src_path)
 
 
 def convert_any(path: Path, output_dir: Path) -> Result:
@@ -165,7 +166,37 @@ def convert_any(path: Path, output_dir: Path) -> Result:
         return Result(False, f"Failed: {e}", full_log, None)
 
 
-def _save_pdf_bytes(data: bytes, stem: str, output_dir: Path, log_chunks: list) -> Result:
+# Which source produced each PDF written by this process, keyed by normalized
+# path. Re-converting a file replaces its own PDF; a different file whose PDF
+# name collides gets "name (2).pdf" rather than silently replacing the first.
+# Files from earlier sessions aren't tracked: an existing PDF of the same name
+# is replaced, and the status says so.
+_source_of_pdf: dict[str, str] = {}
+
+
+def _path_key(path: Path) -> str:
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _pdf_destination(folder: Path, stem: str, source: Path) -> Path:
+    n = 1
+    while True:
+        dest = folder / (f"{stem}.pdf" if n == 1 else f"{stem} ({n}).pdf")
+        owner = _source_of_pdf.get(_path_key(dest))
+        if owner is None or owner == _path_key(source):
+            return dest
+        n += 1
+
+
+def _write_pdf(dest: Path, data: bytes, source: Path) -> None:
+    with open(dest, "wb") as f:
+        f.write(data)
+    _source_of_pdf[_path_key(dest)] = _path_key(source)
+
+
+def _save_pdf_bytes(
+    data: bytes, stem: str, output_dir: Path, log_chunks: list, source: Path
+) -> Result:
     """Write PDF bytes into output_dir, retrying, then falling back.
 
     Raw byte write (open 'wb') rather than shutil.copy2: copy2 also sets file
@@ -174,14 +205,16 @@ def _save_pdf_bytes(data: bytes, stem: str, output_dir: Path, log_chunks: list) 
     minimal, most-compatible operation. If output_dir keeps refusing the write,
     save to a guaranteed-writable fallback so a good PDF is never lost.
     """
-    dest = output_dir / f"{stem}.pdf"
+    dest = _pdf_destination(output_dir, stem, source)
+    # Checked once, before any attempt: a failed partial write must not turn
+    # the next attempt into a "replaced".
+    replaced = dest.exists()
     last_error = None
     for attempt in range(4):
         try:
             if not output_dir.exists():
                 output_dir.mkdir(parents=True, exist_ok=True)
-            with open(dest, "wb") as f:
-                f.write(data)
+            _write_pdf(dest, data, source)
             last_error = None
             break
         except OSError as e:
@@ -190,15 +223,16 @@ def _save_pdf_bytes(data: bytes, stem: str, output_dir: Path, log_chunks: list) 
             time.sleep(0.6 * (attempt + 1))
 
     if last_error is None:
-        full_log = "".join(log_chunks) + f"Saved to {dest}\n"
+        verb = "Replaced" if replaced else "Saved to"
+        full_log = "".join(log_chunks) + f"{verb} {dest}\n"
         _append_log(full_log)
-        return Result(True, f"Done -> {dest}", full_log, dest)
+        done = "Done, replaced existing PDF" if replaced else "Done"
+        return Result(True, f"{done} -> {dest}", full_log, dest)
 
-    fallback_dest = FALLBACK_DIR / f"{stem}.pdf"
+    fallback_dest = _pdf_destination(FALLBACK_DIR, stem, source)
     try:
         FALLBACK_DIR.mkdir(parents=True, exist_ok=True)
-        with open(fallback_dest, "wb") as f:
-            f.write(data)
+        _write_pdf(fallback_dest, data, source)
     except OSError as e:
         status = f"Failed: couldn't write {output_dir} or the fallback folder: {e}"
         full_log = "".join(log_chunks) + status + "\n"
@@ -212,6 +246,12 @@ def _save_pdf_bytes(data: bytes, stem: str, output_dir: Path, log_chunks: list) 
 
 
 def _append_log(text: str) -> None:
+    # Keep one previous generation; every notebook adds nbconvert's full output.
+    try:
+        if LOG_PATH.stat().st_size > LOG_MAX_BYTES:
+            LOG_PATH.replace(LOG_PATH.with_name(f"{LOG_PATH.stem}.old{LOG_PATH.suffix}"))
+    except OSError:
+        pass  # no log yet, or it is locked; appending below still works
     try:
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             f.write(text + "\n" + ("=" * 80) + "\n")
