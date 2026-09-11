@@ -80,7 +80,7 @@ def convert_notebook(nb_path: Path, output_dir: Path) -> Result:
     with tempfile.TemporaryDirectory(dir=STAGING_DIR) as tmp_dir_str:
         tmp_dir = Path(tmp_dir_str)
         cmd = [
-            PYTHON_EXE, "-m", "jupyter", "nbconvert",
+            PYTHON_EXE, "-m", "nbconvert",
             "--to", "webpdf",
             "--template", TEMPLATE_NAME,
             f"--TemplateExporter.extra_template_basedirs={TEMPLATE_BASE_DIR}",
