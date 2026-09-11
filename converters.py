@@ -252,7 +252,9 @@ _BUILDERS = {
 def file_to_html(path: Path) -> str:
     kind = kind_for(path)
     body = _BUILDERS[kind](path)
-    return wrap_html(path.name, f"{kind} - {path}", body, base_dir=path.parent)
+    # The subtitle is the kind only. The source's full path would put local
+    # folder names into a PDF that may be shared.
+    return wrap_html(path.name, kind, body, base_dir=path.parent)
 
 
 # ---------------------------------------------------------------------------
