@@ -260,6 +260,18 @@ def file_to_html(path: Path) -> str:
 # ---------------------------------------------------------------------------
 # Engine: HTML string -> PDF bytes, via the same Chromium path nbconvert uses
 # ---------------------------------------------------------------------------
+# Runs after load, before printing. A link to a local file is dead in a PDF,
+# and Chromium would store its absolute file:// target (a local folder path)
+# in the file, so those hrefs are removed and the link text stays. In-page
+# #anchors also resolve to file:// URLs but print as internal jumps, so they
+# are kept.
+_UNLINK_LOCAL_FILES_JS = """() => {
+  for (const a of document.querySelectorAll('a[href]')) {
+    if (a.protocol === 'file:' && !a.getAttribute('href').startsWith('#')) a.removeAttribute('href');
+  }
+}"""
+
+
 async def _render_pdf(url: str) -> bytes:
     from playwright.async_api import async_playwright
 
@@ -271,6 +283,7 @@ async def _render_pdf(url: str) -> bytes:
             page = await browser.new_page()
             await page.emulate_media(media="print")
             await page.goto(url, wait_until="networkidle")
+            await page.evaluate(_UNLINK_LOCAL_FILES_JS)
             return await page.pdf(print_background=True, prefer_css_page_size=True)
         finally:
             await browser.close()

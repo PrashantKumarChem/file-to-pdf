@@ -87,6 +87,31 @@ def test_markdown_image_resolves_next_to_the_source(tmp_path):
     assert [(img[2], img[3]) for img in page.get_images(full=True)] == [(8, 8)]
 
 
+def test_local_folder_paths_stay_out_of_the_pdf(tmp_path):
+    folder = tmp_path / "Private Folder Name"
+    folder.mkdir()
+    (folder / "dot.png").write_bytes(PNG_8X8)
+    md = folder / "notes.md"
+    md.write_text(
+        "# Notes\n\n![dot](dot.png)\n\n[sibling](other.md), [absolute](file:///C:/Windows/win.ini),"
+        " [web](https://example.com) and [jump](#target)\n\n" + "filler\n\n" * 150
+        + '<h2 id="target">Target</h2>\n',
+        encoding="utf-8",
+    )
+    data = converters.file_to_pdf_bytes(md)
+    doc = pdf_doc(data)
+    page = doc[0]
+    links = page.get_links()
+    # Local file links become plain text; web links stay clickable; the in-page
+    # anchor stays an internal jump to the heading's page.
+    assert [link.get("uri") for link in links if link["kind"] == fitz.LINK_URI] == ["https://example.com/"]
+    assert [link.get("page") for link in links if link["kind"] != fitz.LINK_URI] == [len(doc) - 1]
+    assert "sibling" in page.get_text()
+    for fragment in (b"Private Folder Name", b"Private%20Folder%20Name", tmp_path.name.encode()):
+        assert fragment not in data
+    assert len(page.get_images()) == 1
+
+
 def test_crlf_text_lays_out_like_lf_text(tmp_path):
     lines = [f"line {i:04d} " + "x" * (i % 90) for i in range(300)]
     lf, crlf = tmp_path / "lf.txt", tmp_path / "crlf.txt"
