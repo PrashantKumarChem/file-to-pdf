@@ -2,8 +2,8 @@
 File -> PDF: pick files and get PDFs out.
 
 Notebooks (.ipynb) go through the nbconvert webpdf pipeline with the custom
-'pdf-nowrap-fix' template (installed under
-~/.jupyter/nbconvert-templates/pdf-nowrap-fix) so long code lines and output
+'pdf-nowrap-fix' template (nbconvert-templates/pdf-nowrap-fix next to this
+file) so long code lines and output
 wrap instead of getting clipped off the page edge. Other formats (JSON,
 Markdown, code, plain text/logs) are handled by converters.py, which renders
 them to styled HTML and prints them through the same Chromium engine. One PDF
@@ -24,6 +24,7 @@ ever arrives un-braced.
 
 import queue
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -38,8 +39,12 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 
 import converters
 
-PYTHON_EXE = str(Path.home() / "Miniconda3" / "python.exe")
-TEMPLATE_BASE_DIR = str(Path.home() / ".jupyter" / "nbconvert-templates")
+# nbconvert runs in a child process of the interpreter this GUI runs under. The
+# launcher starts the GUI with pythonw.exe; the child uses its console sibling
+# python.exe (its window is suppressed by CREATE_NO_WINDOW).
+_CONSOLE_PYTHON = Path(sys.executable).with_name("python.exe")
+PYTHON_EXE = str(_CONSOLE_PYTHON if _CONSOLE_PYTHON.exists() else Path(sys.executable))
+TEMPLATE_BASE_DIR = str(Path(__file__).parent / "nbconvert-templates")
 TEMPLATE_NAME = "pdf-nowrap-fix"
 LOG_PATH = Path(__file__).parent / "conversion_log.txt"
 STAGING_DIR = Path(__file__).parent / "_staging"

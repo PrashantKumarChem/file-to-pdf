@@ -17,7 +17,7 @@ window or pick them with the Open dialog.
 | `notebook_to_pdf_gui.py` | CustomTkinter GUI, queue/worker, notebook conversion, save with retry and fallback |
 | `converters.py` | HTML adapters for non-notebook formats and the HTML -> PDF engine |
 | `Launch Notebook to PDF.vbs` | Starts the GUI with `pythonw.exe` and no console window (the desktop shortcut points here) |
-| `nbconvert-templates/pdf-nowrap-fix/` | Copy of the nbconvert template the notebook path needs |
+| `nbconvert-templates/pdf-nowrap-fix/` | nbconvert template for the notebook path, loaded from this folder |
 
 ## Restoring on a machine
 
@@ -28,12 +28,9 @@ window or pick them with the Open dialog.
    playwright install chromium
    ```
 
-2. Copy `nbconvert-templates/pdf-nowrap-fix` to
-   `%USERPROFILE%\.jupyter\nbconvert-templates\pdf-nowrap-fix`.
-
-3. The Python interpreter is expected at `%USERPROFILE%\Miniconda3`
-   (`PYTHON_EXE` at the top of `notebook_to_pdf_gui.py`, and
-   `Launch Notebook to PDF.vbs`). Adjust both if Python lives elsewhere.
+2. `Launch Notebook to PDF.vbs` starts `%USERPROFILE%\Miniconda3\pythonw.exe`.
+   If the environment lives elsewhere, change that one line. The GUI runs
+   nbconvert with the same interpreter it was started with.
 
 PDFs are saved to `%USERPROFILE%\Notebook PDFs` by default. Conversion details go to
 `conversion_log.txt` next to the script; that file and the `_staging` folder are
