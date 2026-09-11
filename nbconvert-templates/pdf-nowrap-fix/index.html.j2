@@ -1,0 +1,68 @@
+{%- extends 'lab/index.html.j2' -%}
+
+{#
+  The stock lab/webpdf template sets `overflow: hidden` on code input areas
+  and leaves code/output <pre> blocks as `white-space: pre` (no wrap).
+  In a browser that's fine (you can scroll), but Playwright's print-to-PDF
+  pass has no scrolling, so any line wider than the page just gets clipped
+  off the right edge. This block forces everything to wrap instead.
+#}
+{%- block html_head_css -%}
+<style type="text/css">
+@page {
+  size: letter portrait;
+  margin: 0.1in;
+}
+
+.jp-InputArea-editor,
+.jp-InputArea-editor .cm-editor,
+.jp-InputArea-editor .cm-scroller,
+.jp-OutputArea-output {
+  overflow: visible !important;
+}
+
+/* Wrapping is what actually prevents clipping -- applies to input and output. */
+.cm-editor.cm-s-jupyter .highlight pre,
+.jp-InputArea-editor pre,
+.cm-line,
+.jp-OutputArea-output pre {
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* Input code stays full size (readable). Only OUTPUT blocks -- which is where
+   the wide fixed-width table dumps live (astropy pprint) -- render smaller, so
+   those tables fit the page width and keep their column alignment instead of
+   wrapping mid-row. */
+.jp-OutputArea-output pre,
+.jp-RenderedText pre {
+  font-size: 0.8em !important;
+  line-height: 1.3 !important;
+}
+
+.jp-RenderedHTMLCommon table {
+  overflow-x: visible !important;
+}
+
+/* Wide generated figures/diagrams (graphviz apparatus SVGs from
+   A.visualize()/A.describe(), matplotlib/altair charts, and any other wide
+   image or SVG cell output) overflow the page and get clipped off the right
+   edge in the print-to-PDF pass. Graphviz emits an <svg> with explicit
+   width/height in pt (e.g. 888pt) plus a viewBox, so max-width:100% overrides
+   the pt width and height:auto scales it down proportionally to fit the page.
+   Scoped to output areas so input code and markdown-embedded images are
+   untouched. */
+.jp-OutputArea-output svg,
+.jp-OutputArea-output img,
+.jp-RenderedSVG svg,
+.jp-RenderedImage img {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+.jp-Cell {
+  break-inside: avoid-page;
+}
+</style>
+{%- endblock html_head_css -%}

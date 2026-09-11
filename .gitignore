@@ -1,0 +1,6 @@
+# Runtime output: the log records full paths of every converted file
+conversion_log.txt
+_staging/
+
+__pycache__/
+*.pyc
