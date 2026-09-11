@@ -61,10 +61,15 @@ class App:
         # (a queue of N conversions no longer spawns N Explorer windows). Reset
         # in _enqueue_paths when a fresh batch is dropped in.
         self._opened_dirs: set[str] = set()
-        self.row_by_path: dict[str, str] = {}
+        # The last non-custom output option, restored if the folder picker is
+        # cancelled before any custom folder was chosen.
+        self._last_plain_mode = "local"
         self.full_message_by_row: dict[str, str] = {}
-        self.work_queue: "queue.Queue[Path]" = queue.Queue()
-        self.result_queue: "queue.Queue[tuple]" = queue.Queue()
+        # Jobs are (row_id, path, output_dir); results are (row_id, Result),
+        # with None as the Result meaning "started". Keying by Treeview row id
+        # keeps a file dropped twice as two independent rows.
+        self.work_queue: "queue.Queue[tuple[str, Path, Path]]" = queue.Queue()
+        self.result_queue: "queue.Queue[tuple[str, pipeline.Result | None]]" = queue.Queue()
         self._last_output_dir: Path | None = None
 
         self._build_ui()
@@ -211,7 +216,9 @@ class App:
 
     # -------------------------------------------------------------- actions ---
     def _update_output_label(self):
-        if self.output_mode.get() != "custom":
+        mode = self.output_mode.get()
+        if mode != "custom":
+            self._last_plain_mode = mode
             self.output_label.configure(text="")
 
     def _choose_output_dir(self):
@@ -219,9 +226,18 @@ class App:
         if chosen:
             self.custom_output_dir = Path(chosen)
             self.output_label.configure(text=str(self.custom_output_dir))
-        else:
-            self.output_mode.set("same")
-            self._update_output_label()
+        elif self.custom_output_dir is None:
+            # Cancelled with no folder to fall back on: return to the option
+            # that was selected, instead of switching to some other destination.
+            self.output_mode.set(self._last_plain_mode)
+
+    def _output_dir_for(self, path: Path) -> Path:
+        mode = self.output_mode.get()
+        if mode == "custom" and self.custom_output_dir:
+            return self.custom_output_dir
+        if mode == "same":
+            return path.parent
+        return pipeline.DEFAULT_OUTPUT_DIR  # "local", the reliable default
 
     def _browse_files(self):
         supported = " ".join(
@@ -272,42 +288,40 @@ class App:
                 continue
             note = "" if path.suffix.lower() in handled else " (as text)"
             row_id = self.tree.insert("", "end", values=(path.name, "Queued" + note))
-            self.row_by_path[str(path)] = row_id
-            self.work_queue.put(path)
+            # The destination is fixed here, on the Tk thread: changing the
+            # output option later only affects files added later, and the
+            # worker never has to read Tk variables.
+            self.work_queue.put((row_id, path, self._output_dir_for(path)))
 
     def _start_worker(self):
         threading.Thread(target=self._worker_loop, daemon=True).start()
 
     def _worker_loop(self):
+        # Off the Tk thread: reads work_queue, writes result_queue, nothing else.
+        # pipeline.convert_any never raises, so this loop outlives any bad file.
         while True:
-            path = self.work_queue.get()
-            mode = self.output_mode.get()
-            if mode == "custom" and self.custom_output_dir:
-                output_dir = self.custom_output_dir
-            elif mode == "same":
-                output_dir = path.parent
-            else:  # "local" -- the reliable default
-                output_dir = pipeline.DEFAULT_OUTPUT_DIR
-            self.result_queue.put((path, None, "Converting…", "", None))
-            ok, short_status, full_log, saved_path = pipeline.convert_any(path, output_dir)
-            self.result_queue.put((path, ok, short_status, full_log, saved_path))
+            row_id, path, output_dir = self.work_queue.get()
+            self.result_queue.put((row_id, None))
+            self.result_queue.put((row_id, pipeline.convert_any(path, output_dir)))
 
     def _poll_results(self):
         try:
             while True:
-                path, ok, short_status, full_log, saved_path = self.result_queue.get_nowait()
-                row_id = self.row_by_path.get(str(path))
-                if row_id is None:
+                row_id, result = self.result_queue.get_nowait()
+                if not self.tree.exists(row_id):  # removed by "Clear list"
                     continue
-                self.tree.set(row_id, "status", short_status)
-                if ok is not None:
-                    self.full_message_by_row[row_id] = full_log
-                if ok and saved_path is not None:
-                    self._last_output_dir = saved_path.parent
-                    if self.auto_open.get() and str(saved_path.parent) not in self._opened_dirs:
-                        self._opened_dirs.add(str(saved_path.parent))
+                if result is None:
+                    self.tree.set(row_id, "status", "Converting…")
+                    continue
+                self.tree.set(row_id, "status", result.status)
+                self.full_message_by_row[row_id] = result.log
+                if result.ok and result.saved_path is not None:
+                    folder = result.saved_path.parent
+                    self._last_output_dir = folder
+                    if self.auto_open.get() and str(folder) not in self._opened_dirs:
+                        self._opened_dirs.add(str(folder))
                         # select the file in Explorer so the user sees it directly
-                        subprocess.run(["explorer", "/select,", str(saved_path)])
+                        subprocess.Popen(["explorer", "/select,", str(result.saved_path)])
         except queue.Empty:
             pass
         self.root.after(150, self._poll_results)
@@ -315,12 +329,11 @@ class App:
     def _clear_list(self):
         for row_id in self.tree.get_children():
             self.tree.delete(row_id)
-        self.row_by_path.clear()
         self.full_message_by_row.clear()
 
     def _open_last_output(self):
         target = self._last_output_dir or Path.home()
-        subprocess.run(["explorer", str(target)])
+        subprocess.Popen(["explorer", str(target)])
 
     def _copy_selected_error(self):
         selection = self.tree.selection()
@@ -335,7 +348,8 @@ class App:
     def _open_log_file(self):
         if not pipeline.LOG_PATH.exists():
             pipeline.LOG_PATH.touch()
-        subprocess.run(["notepad.exe", str(pipeline.LOG_PATH)])
+        # Popen, not run: waiting for the editor to exit would freeze the window.
+        subprocess.Popen(["notepad.exe", str(pipeline.LOG_PATH)])
 
 
 def main():

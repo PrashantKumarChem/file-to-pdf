@@ -12,6 +12,7 @@ engine, many small adapters.
 Nothing here imports tkinter, so the pipeline runs and tests without a window.
 """
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -19,10 +20,11 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import converters
 
-# nbconvert runs in a child process of the interpreter this GUI runs under. The
+# nbconvert runs in a child process of the interpreter running this code. The
 # launcher starts the GUI with pythonw.exe; the child uses its console sibling
 # python.exe (its window is suppressed by CREATE_NO_WINDOW).
 _CONSOLE_PYTHON = Path(sys.executable).with_name("python.exe")
@@ -41,8 +43,24 @@ DEFAULT_OUTPUT_DIR = Path.home() / "Notebook PDFs"
 FALLBACK_DIR = Path.home() / "Desktop" / "NotebookToPDF - could not save"
 
 
-def convert_notebook(nb_path: Path, output_dir: Path) -> tuple[bool, str, str, Path | None]:
-    """Returns (success, status_text, full_log_text, saved_path).
+NBCONVERT_TIMEOUT_S = 600
+
+
+class Result(NamedTuple):
+    """Outcome of one conversion: saved_path is where the PDF landed, or None."""
+
+    ok: bool
+    status: str
+    log: str
+    saved_path: Path | None
+
+
+def _log_header(path: Path) -> str:
+    return f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {path}\n"
+
+
+def convert_notebook(nb_path: Path, output_dir: Path) -> Result:
+    """Convert a notebook with nbconvert's webpdf exporter and save the PDF.
 
     nbconvert always writes to a local staging directory first, then the
     finished PDF is copied into the requested output folder. Writing
@@ -56,7 +74,7 @@ def convert_notebook(nb_path: Path, output_dir: Path) -> tuple[bool, str, str, P
     ended up (requested folder, or the fallback), or None on failure.
     """
     STAGING_DIR.mkdir(parents=True, exist_ok=True)
-    log_chunks = [f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {nb_path}\n"]
+    log_chunks = [_log_header(nb_path)]
 
     with tempfile.TemporaryDirectory(dir=STAGING_DIR) as tmp_dir_str:
         tmp_dir = Path(tmp_dir_str)
@@ -71,14 +89,24 @@ def convert_notebook(nb_path: Path, output_dir: Path) -> tuple[bool, str, str, P
         ]
         log_chunks.append(f"cmd: {cmd}\n")
         try:
+            # The child writes its console streams in the locale code page
+            # unless told otherwise; pin both ends to UTF-8 so a non-ASCII
+            # notebook name or output can't fail the decode.
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=600,
+                cmd, capture_output=True, encoding="utf-8", errors="replace",
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                timeout=NBCONVERT_TIMEOUT_S,
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
         except subprocess.TimeoutExpired:
-            full_log = "".join(log_chunks) + "TIMED OUT after 10 minutes\n"
+            message = f"timed out after {NBCONVERT_TIMEOUT_S // 60} minutes"
+            full_log = "".join(log_chunks) + message.upper() + "\n"
             _append_log(full_log)
-            return False, "Failed: timed out after 10 minutes", full_log, None
+            return Result(False, f"Failed: {message}", full_log, None)
+        except OSError as e:
+            full_log = "".join(log_chunks) + f"could not start nbconvert: {e}\n"
+            _append_log(full_log)
+            return Result(False, f"Failed: could not start nbconvert: {e}", full_log, None)
 
         log_chunks.append(
             f"return code: {result.returncode}\n"
@@ -90,46 +118,54 @@ def convert_notebook(nb_path: Path, output_dir: Path) -> tuple[bool, str, str, P
             _append_log(full_log)
             lines = [l for l in result.stderr.strip().splitlines() if l.strip()]
             short = lines[-1] if lines else "Unknown error (see log)"
-            return False, f"Failed: {short}", full_log, None
+            return Result(False, f"Failed: {short}", full_log, None)
 
         produced = tmp_dir / f"{nb_path.stem}.pdf"
         if not produced.exists():
             full_log = "".join(log_chunks) + f"nbconvert reported success but {produced} is missing\n"
             _append_log(full_log)
-            return False, "Failed: PDF missing after conversion (see log)", full_log, None
+            return Result(False, "Failed: PDF missing after conversion (see log)", full_log, None)
 
         return _save_pdf_bytes(produced.read_bytes(), nb_path.stem, output_dir, log_chunks)
 
 
-def convert_file(src_path: Path, output_dir: Path) -> tuple[bool, str, str, Path | None]:
+def convert_file(src_path: Path, output_dir: Path) -> Result:
     """Convert a non-notebook file (JSON/Markdown/code/text) to PDF.
 
     Renders the file to styled HTML via converters.py, then prints it to PDF
     with the shared Chromium engine, and saves it with the same retry/fallback
     logic as notebooks.
     """
-    log_chunks = [f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {src_path}\n"]
+    log_chunks = [_log_header(src_path)]
     try:
         pdf_bytes = converters.file_to_pdf_bytes(src_path)
     except Exception as e:  # noqa: BLE001 - surface any adapter/engine failure
         full_log = "".join(log_chunks) + "CONVERSION ERROR:\n" + traceback.format_exc()
         _append_log(full_log)
-        return False, f"Failed: {e}", full_log, None
+        return Result(False, f"Failed: {e}", full_log, None)
     # Keep the source extension in the PDF name (e.g. Compound1.json.pdf) so a
     # notebook and a same-named data file don't both collapse to Compound1.pdf.
     return _save_pdf_bytes(pdf_bytes, src_path.name, output_dir, log_chunks)
 
 
-def convert_any(path: Path, output_dir: Path) -> tuple[bool, str, str, Path | None]:
-    """Route a file to the right converter by extension."""
-    if path.suffix.lower() == ".ipynb":
-        return convert_notebook(path, output_dir)
-    return convert_file(path, output_dir)
+def convert_any(path: Path, output_dir: Path) -> Result:
+    """Route a file to the right converter by extension. Never raises.
+
+    The GUI runs every conversion on one worker thread. An exception escaping
+    from here would end that thread and leave each later file queued forever,
+    so anything unexpected becomes a failed Result carrying the traceback.
+    """
+    try:
+        if path.suffix.lower() == ".ipynb":
+            return convert_notebook(path, output_dir)
+        return convert_file(path, output_dir)
+    except Exception as e:  # noqa: BLE001 - the worker must survive any failure
+        full_log = _log_header(path) + "UNEXPECTED ERROR:\n" + traceback.format_exc()
+        _append_log(full_log)
+        return Result(False, f"Failed: {e}", full_log, None)
 
 
-def _save_pdf_bytes(
-    data: bytes, stem: str, output_dir: Path, log_chunks: list
-) -> tuple[bool, str, str, Path | None]:
+def _save_pdf_bytes(data: bytes, stem: str, output_dir: Path, log_chunks: list) -> Result:
     """Write PDF bytes into output_dir, retrying, then falling back.
 
     Raw byte write (open 'wb') rather than shutil.copy2: copy2 also sets file
@@ -156,17 +192,23 @@ def _save_pdf_bytes(
     if last_error is None:
         full_log = "".join(log_chunks) + f"Saved to {dest}\n"
         _append_log(full_log)
-        return True, f"Done -> {dest}", full_log, dest
+        return Result(True, f"Done -> {dest}", full_log, dest)
 
-    FALLBACK_DIR.mkdir(parents=True, exist_ok=True)
     fallback_dest = FALLBACK_DIR / f"{stem}.pdf"
-    with open(fallback_dest, "wb") as f:
-        f.write(data)
+    try:
+        FALLBACK_DIR.mkdir(parents=True, exist_ok=True)
+        with open(fallback_dest, "wb") as f:
+            f.write(data)
+    except OSError as e:
+        status = f"Failed: couldn't write {output_dir} or the fallback folder: {e}"
+        full_log = "".join(log_chunks) + status + "\n"
+        _append_log(full_log)
+        return Result(False, status, full_log, None)
     status = f"Saved to fallback (couldn't write {output_dir}): {fallback_dest}"
     log_chunks.append(status + "\n")
     full_log = "".join(log_chunks)
     _append_log(full_log)
-    return True, status, full_log, fallback_dest
+    return Result(True, status, full_log, fallback_dest)
 
 
 def _append_log(text: str) -> None:
