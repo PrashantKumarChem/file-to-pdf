@@ -3,8 +3,8 @@ Conversion pipeline for the File -> PDF tool: file in, PDF saved, log written.
 
 Notebooks (.ipynb) go through the nbconvert webpdf pipeline with the custom
 'pdf-nowrap-fix' template (nbconvert-templates/pdf-nowrap-fix next to this
-file) so long code lines and output
-wrap instead of getting clipped off the page edge. Other formats (JSON,
+file) so long code lines and output wrap instead of getting clipped off the
+page edge. Other formats (JSON,
 Markdown, code, plain text/logs) are handled by converters.py, which renders
 them to styled HTML and prints them through the same Chromium engine. One PDF
 engine, many small adapters.

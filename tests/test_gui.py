@@ -1,5 +1,6 @@
 """Drive the real window (withdrawn) through its queue, with the PDF engine stubbed."""
 
+import gc
 import time
 
 import pytest
@@ -23,6 +24,11 @@ def app(isolated_pipeline, monkeypatch):
     application.auto_open.set(False)
     yield application
     root.destroy()
+    # Finalize the dead window's Tk objects (fonts, images) here, on the Tk
+    # thread. Left to a later garbage collection on a render thread, each
+    # Font.__del__ waits on a Tcl call that no mainloop will serve, which made
+    # the next Chromium test take 15-27 s instead of about 1.5 s.
+    gc.collect()
     assert callback_errors == []
 
 
