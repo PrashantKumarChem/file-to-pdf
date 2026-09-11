@@ -276,10 +276,14 @@ async def _render_pdf(url: str) -> bytes:
             await browser.close()
 
 
-def _run_in_fresh_loop(coro):
+def _new_event_loop() -> asyncio.AbstractEventLoop:
     # Playwright drives Chromium through subprocess pipes, which on Windows need
     # the Proactor loop; make it explicit in case something set another policy.
-    loop = asyncio.ProactorEventLoop() if os.name == "nt" else asyncio.new_event_loop()
+    return asyncio.ProactorEventLoop() if os.name == "nt" else asyncio.new_event_loop()
+
+
+def _run_in_fresh_loop(coro):
+    loop = _new_event_loop()
     try:
         return loop.run_until_complete(coro)
     finally:
