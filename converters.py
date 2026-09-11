@@ -13,6 +13,8 @@ Public API:
     SUPPORTED_EXTENSIONS                     # set of handled suffixes (no .ipynb)
 """
 
+import asyncio
+import concurrent.futures
 import html as html_lib
 import json
 import os
@@ -42,6 +44,8 @@ _PYGMENTS_CSS = HtmlFormatter(style="default").get_style_defs(".highlight")
 
 # ---------------------------------------------------------------------------
 # HTML shell (matches the notebook PDF look: portrait, wrapping, clean font)
+# The @page rule is the only page setup: the print call in _render_pdf passes
+# prefer_css_page_size and no size or margins of its own.
 # ---------------------------------------------------------------------------
 _SHELL = """<!DOCTYPE html>
 <html><head><meta charset="utf-8">
@@ -184,46 +188,41 @@ def file_to_html(path: Path) -> str:
 # ---------------------------------------------------------------------------
 # Engine: HTML string -> PDF bytes, via the same Chromium path nbconvert uses
 # ---------------------------------------------------------------------------
-def html_to_pdf(html: str) -> bytes:
-    import asyncio
-    import concurrent.futures
+async def _render_pdf(url: str) -> bytes:
+    from playwright.async_api import async_playwright
 
-    async def render(temp_path: str) -> bytes:
-        from playwright.async_api import async_playwright
-
-        pw = await async_playwright().start()
+    async with async_playwright() as pw:
         browser = await pw.chromium.launch(
             handle_sigint=False, handle_sigterm=False, handle_sighup=False
         )
-        page = await browser.new_page()
-        await page.emulate_media(media="print")
-        await page.goto(f"file://{temp_path}", wait_until="networkidle")
-        pdf = await page.pdf(
-            print_background=True,
-            landscape=False,
-            format="Letter",
-            margin={"top": "0.4in", "bottom": "0.4in", "left": "0.4in", "right": "0.4in"},
-        )
-        await browser.close()
-        await pw.stop()
-        return pdf
+        try:
+            page = await browser.new_page()
+            await page.emulate_media(media="print")
+            await page.goto(url, wait_until="networkidle")
+            return await page.pdf(print_background=True, prefer_css_page_size=True)
+        finally:
+            await browser.close()
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".html", delete=False)
-    with tmp:
-        tmp.write(html.encode("utf-8"))
 
-    def run(coro):
-        loop = (
-            asyncio.ProactorEventLoop() if os.name == "nt" else asyncio.new_event_loop()
-        )
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(coro)
-
+def _run_in_fresh_loop(coro):
+    # Playwright drives Chromium through subprocess pipes, which on Windows need
+    # the Proactor loop; make it explicit in case something set another policy.
+    loop = asyncio.ProactorEventLoop() if os.name == "nt" else asyncio.new_event_loop()
     try:
-        pool = concurrent.futures.ThreadPoolExecutor()
-        return pool.submit(run, render(tmp.name)).result()
+        return loop.run_until_complete(coro)
     finally:
-        os.unlink(tmp.name)
+        loop.close()
+
+
+def html_to_pdf(html: str) -> bytes:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        page_path = Path(tmp) / "page.html"
+        page_path.write_text(html, encoding="utf-8")
+        # A private thread with its own event loop, so this also works when the
+        # calling thread already runs one (inside Jupyter, for example). The
+        # with-block joins the thread; nothing outlives the call.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(_run_in_fresh_loop, _render_pdf(page_path.as_uri())).result()
 
 
 def file_to_pdf_bytes(path: Path) -> bytes:
