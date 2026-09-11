@@ -1,5 +1,7 @@
 """Routing, text decoding and HTML building. No browser needed."""
 
+import html as html_lib
+import re
 from pathlib import Path
 
 import pytest
@@ -74,24 +76,65 @@ def test_read_text_rejects_binary(tmp_path):
         converters.read_text(f)
 
 
-def test_file_to_html_keeps_source_path_out_of_visible_text(tmp_path):
+def printed_text(html: str, preformatted: bool = True) -> str:
+    """The text a reader sees: markup stripped, entities decoded.
+
+    For preformatted output (JSON, code, text) that is the <pre> content,
+    minus the single newline HTML drops right after the <pre> tag.
+    """
+    body = html.split("<body>", 1)[1].rsplit("</body>", 1)[0]
+    if preformatted:
+        body = re.search(r"<pre>(.*)</pre>", body, re.S).group(1).removeprefix("\n")
+    return html_lib.unescape(re.sub(r"<[^>]+>", "", body))
+
+
+@pytest.mark.parametrize("name", ["data.json", "script.py", "run.log"])
+def test_output_is_the_file_and_nothing_else(tmp_path, name):
     folder = tmp_path / "private folder"
     folder.mkdir()
-    f = folder / "data.json"
-    f.write_text('{"a": 1}', encoding="utf-8")
+    source = '\n{"mass": 1.0, "exp": 1.50e3, "neg": -0.00,\n    "odd":   [1,2 ,3], "html": "<b>&amp;"}\n\n'
+    f = folder / name
+    f.write_text(source, encoding="utf-8")
     html = converters.file_to_html(f)
-    assert "<p class='subtle'>JSON</p>" in html
-    body = html.split("</head>", 1)[1]
-    assert "private folder" not in body
+    # Exactly the file's text, including number spelling, spacing and
+    # leading/trailing blank lines...
+    assert printed_text(html) == source
+    # ...and nothing printed around it: no heading, file name or folder.
+    body = html.split("<body>", 1)[1].rsplit("</body>", 1)[0]
+    assert re.sub(r"<[^>]+>", "", re.sub(r"<pre>.*</pre>", "", body, flags=re.S)).strip() == ""
     assert f'<base href="{folder.as_uri()}/">' in html
 
 
-def test_json_values_are_escaped(tmp_path):
+def test_json_tokens_get_the_paper_palette(tmp_path):
+    f = tmp_path / "x.json"
+    f.write_text('{"key": "null inside", "flag": true, "n": null, "v": 2.50}', encoding="utf-8")
+    html = converters.file_to_html(f)
+    css = converters._PYGMENTS_CSS
+    assert '<span class="nt">&quot;key&quot;</span>' in html
+    assert '<span class="s2">&quot;null inside&quot;</span>' in html
+    assert '<span class="kc">true</span>' in html and '<span class="kc">null</span>' in html
+    css = css.lower()
+    assert ".source .nt { color: #9b2158; font-weight: bold }" in css
+    assert ".source .s2 { color: #0f7d33 }" in css
+    assert ".source .kc { color: #7a3fc4 }" in css
+    assert ".source .mf {" not in css  # numbers stay in the body text color
+
+
+def test_markup_in_json_is_escaped(tmp_path):
     f = tmp_path / "x.json"
     f.write_text('{"<b>": "<script>alert(1)</script>"}', encoding="utf-8")
     html = converters.file_to_html(f)
     assert "<script>alert" not in html
     assert "&lt;script&gt;" in html
+
+
+def test_markdown_is_rendered_without_additions(tmp_path):
+    f = tmp_path / "notes.md"
+    f.write_text("# Title\n\nSome *text*.\n\n```python\nx = 1\n```\n", encoding="utf-8")
+    html = converters.file_to_html(f)
+    assert printed_text(html, preformatted=False).split() == ["Title", "Some", "text.", "x", "=", "1"]
+    # Fenced code uses the same palette as code files.
+    assert '<div class="source"><pre>' in html
 
 
 def test_code_highlighting_handles_crlf_sources(tmp_path):

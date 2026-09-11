@@ -25,11 +25,31 @@ def pdf_doc(data: bytes):
 
 def test_letter_pages_and_no_threads_left_behind():
     before = threading.active_count()
-    doc = pdf_doc(converters.html_to_pdf(converters.wrap_html("t", "Text", "<p>hello</p>")))
+    doc = pdf_doc(converters.html_to_pdf(converters.wrap_html("<p>hello</p>")))
     page = doc[0]
     assert (round(page.rect.width), round(page.rect.height)) == (612, 792)
     assert "hello" in page.get_text()
     assert threading.active_count() == before
+
+
+def test_json_pdf_is_raw_json_in_the_paper_palette(tmp_path):
+    f = tmp_path / "Compound1.json"
+    f.write_text('{\n  "name": "null inside",\n  "mass": 1.0,\n  "ok": true\n}\n', encoding="utf-8")
+    page = pdf_doc(converters.file_to_pdf_bytes(f))[0]
+    spans = [
+        (s["text"], s["color"], "Bold" in s["font"])
+        for block in page.get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for s in line["spans"]
+        if s["text"].strip()
+    ]
+    assert spans[0] == ("{", 0x1D1D1F, False)  # no heading above the JSON
+    assert ('"name"', 0x9B2158, True) in spans
+    assert ('"null inside"', 0x0F7D33, False) in spans
+    assert ("true", 0x7A3FC4, False) in spans
+    assert any(text.startswith(": 1.0") and color == 0x1D1D1F for text, color, _ in spans)
+    left = min(w[0] for w in page.get_text("words"))
+    assert 42 < left < 45  # 0.6in = 43.2pt
 
 
 def test_render_shuts_down_its_thread_pool_and_event_loop(monkeypatch):

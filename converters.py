@@ -4,8 +4,8 @@ Format adapters + shared HTML->PDF engine for the Notebook/File -> PDF tool.
 Architecture: one PDF engine, many small "render to HTML" adapters.
 Everything except Jupyter notebooks is turned into a styled HTML string here,
 then printed to PDF by the same Chromium/Playwright pipeline that nbconvert's
-webpdf exporter uses. Notebooks keep going through nbconvert (see the GUI
-module) because its rich-output handling is worth reusing.
+webpdf exporter uses. Notebooks keep going through nbconvert (see
+pipeline.py) because its rich-output handling is worth reusing.
 
 Public API:
     html_to_pdf(html_str) -> bytes
@@ -20,7 +20,6 @@ import asyncio
 import codecs
 import concurrent.futures
 import html as html_lib
-import json
 import os
 import re
 import tempfile
@@ -29,6 +28,8 @@ from pathlib import Path
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import JsonLexer, TextLexer, get_all_lexers, get_lexer_for_filename
+from pygments.style import Style
+from pygments.token import Comment, Keyword, Name, String
 from pygments.util import ClassNotFound
 
 # ---------------------------------------------------------------------------
@@ -47,7 +48,7 @@ class UnsupportedFileError(ValueError):
     """The file can't be printed as text (it is binary)."""
 
 
-def _lexer_for(path: Path, text: str | None = None):
+def _lexer_for(path: Path, text: str | None = None, **options):
     """Pygments lexer for the file name, or None if it is unknown or plain text.
 
     Pygments matches its filename globs case-sensitively, so SCRIPT.PY is
@@ -55,7 +56,7 @@ def _lexer_for(path: Path, text: str | None = None):
     """
     for name in dict.fromkeys((path.name, path.with_suffix(path.suffix.lower()).name)):
         try:
-            lexer = get_lexer_for_filename(name, text)
+            lexer = get_lexer_for_filename(name, text, **options)
         except ClassNotFound:
             continue
         return None if isinstance(lexer, TextLexer) else lexer
@@ -110,135 +111,111 @@ def read_text(path: Path) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
-_PYGMENTS_CSS = HtmlFormatter(style="default").get_style_defs(".highlight")
+class PaperStyle(Style):
+    """The syntax palette for every highlighted file: JSON, code, Markdown code.
+
+    Deliberately muted: the JSON notebook pages are mostly long InChI and
+    SMILES strings, and editor-bright colors on those tire the eye over many
+    pages. Keys (and markup tags) bold maroon, strings green, true/false/null
+    and other keywords purple, comments grey; numbers and punctuation stay in
+    the body text color.
+    """
+
+    background_color = "#ffffff"
+    styles = {
+        Name.Tag: "bold #9b2158",
+        String: "#0f7d33",
+        Keyword: "#7a3fc4",
+        Comment: "italic #6e6e73",
+    }
+
+
+_PYGMENTS_CSS = HtmlFormatter(style=PaperStyle).get_style_defs(".source")
 
 # ---------------------------------------------------------------------------
-# HTML shell (matches the notebook PDF look: portrait, wrapping, clean font)
+# HTML shell: Letter pages with 0.6in margins, content only, no header.
 # The @page rule is the only page setup: the print call in _render_pdf passes
 # prefer_css_page_size and no size or margins of its own.
 # ---------------------------------------------------------------------------
 _SHELL = """<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 {base}<style>
-@page {{ size: letter portrait; margin: 0.4in; }}
+@page {{ size: letter portrait; margin: 0.6in; }}
 * {{ -webkit-print-color-adjust: exact; }}
 body {{
+  margin: 0;
   font-family: "Segoe UI", Arial, sans-serif;
-  font-size: 12px; color: #1a1a1a; line-height: 1.45;
+  font-size: 12px; line-height: 1.45; color: #1d1d1f;
 }}
-h1 {{ font-size: 20px; margin: 0 0 4px; }}
-h2 {{ font-size: 15px; margin: 18px 0 6px; color: #333; }}
-.subtle {{ color: #888; font-size: 11px; margin: 0 0 16px; }}
-pre, code {{
-  font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
-  font-size: 11px;
+.source pre, code {{
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
 }}
-pre {{
+.source pre {{
+  font-size: 9.5pt; line-height: 1.55; margin: 0;
   white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
-  background: #f5f5f5; border: 1px solid #e2e2e2; border-radius: 4px;
-  padding: 10px 12px; margin: 0;
 }}
-.plain {{ background: #fafafa; }}
-.highlight {{ background: #f5f5f5; border: 1px solid #e2e2e2; border-radius: 4px; }}
-.highlight pre {{ background: transparent; border: 0; }}
-table.jsontbl {{
-  border-collapse: collapse; margin: 2px 0; width: auto; max-width: 100%;
-}}
-table.jsontbl th, table.jsontbl td {{
-  border: 1px solid #d0d0d0; padding: 3px 8px; text-align: left;
-  vertical-align: top; word-break: break-word; overflow-wrap: anywhere;
-}}
-table.jsontbl th {{ background: #eef2f7; font-weight: 600; white-space: nowrap; }}
-table.jsontbl td table.jsontbl {{ margin: 0; }}
-.null {{ color: #999; font-style: italic; }}
-ul {{ margin: 2px 0 2px 18px; padding: 0; }}
+.markdown .source {{ margin: 0.8em 0; }}
+.markdown table {{ border-collapse: collapse; }}
+.markdown th, .markdown td {{ border: 1px solid #d0d0d0; padding: 3px 8px; text-align: left; }}
 {pygments_css}
 </style></head>
 <body>{body}</body></html>
 """
 
 
-def wrap_html(title: str, subtitle: str, body: str, base_dir: Path | None = None) -> str:
-    """Wrap body HTML in the page shell.
+def wrap_html(body: str, base_dir: Path | None = None) -> str:
+    """Wrap body HTML in the page shell. Nothing is added around the content.
 
     base_dir becomes the document base URL, so relative links in the body
     (a Markdown image next to its .md file) resolve from the source folder
     rather than from the temporary file Chromium actually loads.
     """
-    header = f"<h1>{html_lib.escape(title)}</h1>"
-    if subtitle:
-        header += f"<p class='subtle'>{html_lib.escape(subtitle)}</p>"
     base = ""
     if base_dir is not None:
         base = f'<base href="{html_lib.escape(base_dir.absolute().as_uri() + "/")}">\n'
-    return _SHELL.format(base=base, pygments_css=_PYGMENTS_CSS, body=header + body)
+    return _SHELL.format(base=base, pygments_css=_PYGMENTS_CSS, body=body)
 
 
 # ---------------------------------------------------------------------------
-# Adapters: path -> body HTML
+# Adapters: path -> body HTML. Each prints the file 1:1: JSON, code and text
+# exactly as written (no reformatting, no added sections), Markdown rendered.
 # ---------------------------------------------------------------------------
-def _json_value_html(obj) -> str:
-    """Recursively render any JSON value. Lists of objects become tables."""
-    if isinstance(obj, dict):
-        rows = "".join(
-            f"<tr><th>{html_lib.escape(str(k))}</th>"
-            f"<td>{_json_value_html(v)}</td></tr>"
-            for k, v in obj.items()
-        )
-        return f"<table class='jsontbl'>{rows}</table>"
-    if isinstance(obj, list):
-        if obj and all(isinstance(x, dict) for x in obj):
-            keys: list = []
-            for d in obj:
-                for k in d:
-                    if k not in keys:
-                        keys.append(k)
-            head = "".join(f"<th>{html_lib.escape(str(k))}</th>" for k in keys)
-            body = ""
-            for d in obj:
-                cells = "".join(
-                    f"<td>{_json_value_html(d.get(k))}</td>" for k in keys
-                )
-                body += f"<tr>{cells}</tr>"
-            return f"<table class='jsontbl'><tr>{head}</tr>{body}</table>"
-        return "<ul>" + "".join(f"<li>{_json_value_html(x)}</li>" for x in obj) + "</ul>"
-    if obj is None:
-        return "<span class='null'>null</span>"
-    return html_lib.escape(str(obj))
+_FORMATTER = HtmlFormatter(style=PaperStyle, cssclass="source")
+# Pygments strips leading and trailing blank lines by default; keep them.
+_VERBATIM = {"stripnl": False, "ensurenl": False}
 
 
 def json_to_body(path: Path) -> str:
-    data = json.loads(read_text(path))
-    structured = "<h2>Structured view</h2>" + _json_value_html(data)
-    pretty = json.dumps(data, indent=2, ensure_ascii=False)
-    highlighted = highlight(pretty, JsonLexer(), HtmlFormatter())
-    raw_section = "<h2>Raw JSON</h2>" + highlighted
-    return structured + raw_section
+    # Highlighted from the source text, never parsed and re-serialized, so
+    # numbers keep their spelling (1.0, 1.50e3) and key order and whitespace
+    # stay as the file has them. Invalid JSON prints as it is too.
+    return highlight(read_text(path), JsonLexer(**_VERBATIM), _FORMATTER)
 
 
 def markdown_to_body(path: Path) -> str:
     import markdown
 
-    text = read_text(path)
-    return markdown.markdown(
-        text,
+    html = markdown.markdown(
+        read_text(path),
         extensions=["fenced_code", "tables", "codehilite", "sane_lists"],
-        # codehilite defaults to a .codehilite wrapper; point it at the same
-        # .highlight class our shell's Pygments CSS styles, so fenced code
-        # blocks get syntax colors too.
-        extension_configs={"codehilite": {"css_class": "highlight"}},
+        # Fenced code blocks use the same wrapper class, and so the same
+        # palette, as code files.
+        extension_configs={"codehilite": {"css_class": "source"}},
     )
+    return f"<div class='markdown'>{html}</div>"
 
 
 def code_to_body(path: Path) -> str:
     code = read_text(path)
     # Passing the text lets Pygments pick between lexers sharing a suffix (.m).
-    lexer = _lexer_for(path, code) or TextLexer()
-    return highlight(code, lexer, HtmlFormatter())
+    lexer = _lexer_for(path, code, **_VERBATIM) or TextLexer(**_VERBATIM)
+    return highlight(code, lexer, _FORMATTER)
 
 
 def text_to_body(path: Path) -> str:
-    return f"<pre class='plain'>{html_lib.escape(read_text(path))}</pre>"
+    # HTML drops one newline right after <pre>; the extra one keeps a file's
+    # leading blank line.
+    return f"<div class='source'><pre>\n{html_lib.escape(read_text(path))}</pre></div>"
 
 
 _BUILDERS = {
@@ -250,11 +227,7 @@ _BUILDERS = {
 
 
 def file_to_html(path: Path) -> str:
-    kind = kind_for(path)
-    body = _BUILDERS[kind](path)
-    # The subtitle is the kind only. The source's full path would put local
-    # folder names into a PDF that may be shared.
-    return wrap_html(path.name, kind, body, base_dir=path.parent)
+    return wrap_html(_BUILDERS[kind_for(path)](path), base_dir=path.parent)
 
 
 # ---------------------------------------------------------------------------
