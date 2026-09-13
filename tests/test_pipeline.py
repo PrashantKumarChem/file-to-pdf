@@ -7,8 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import converters
-import pipeline
+from topdf import converters, pipeline
 
 FAKE_PDF = b"%PDF-1.7 fake"
 REPO = Path(__file__).resolve().parents[1]
@@ -37,9 +36,9 @@ def test_saves_into_output_dir(isolated_pipeline, stub_engine, tmp_path):
 
 def test_notebook_pdf_is_named_after_the_notebook(isolated_pipeline, stub_engine, tmp_path):
     out = isolated_pipeline["DEFAULT_OUTPUT_DIR"]
-    notebook = pipeline.convert_any(make(tmp_path / "src", "Compound1.ipynb"), out)
-    data = pipeline.convert_any(make(tmp_path / "src", "Compound1.json"), out)
-    assert (notebook.saved_path.name, data.saved_path.name) == ("Compound1.pdf", "Compound1.json.pdf")
+    notebook = pipeline.convert_any(make(tmp_path / "src", "analysis.ipynb"), out)
+    data = pipeline.convert_any(make(tmp_path / "src", "analysis.json"), out)
+    assert (notebook.saved_path.name, data.saved_path.name) == ("analysis.pdf", "analysis.json.pdf")
 
 
 def test_reconverting_a_file_replaces_its_own_pdf(isolated_pipeline, stub_engine, tmp_path):
@@ -54,13 +53,13 @@ def test_reconverting_a_file_replaces_its_own_pdf(isolated_pipeline, stub_engine
 def test_same_named_files_from_different_folders_do_not_overwrite(
     isolated_pipeline, stub_engine, tmp_path
 ):
-    a = make(tmp_path / "one", "Compound1.json")
-    b = make(tmp_path / "two", "Compound1.json")
+    a = make(tmp_path / "one", "analysis.json")
+    b = make(tmp_path / "two", "analysis.json")
     out = isolated_pipeline["DEFAULT_OUTPUT_DIR"]
     ra = pipeline.convert_any(a, out)
     rb = pipeline.convert_any(b, out)
-    assert ra.saved_path.name == "Compound1.json.pdf"
-    assert rb.saved_path.name == "Compound1.json (2).pdf"
+    assert ra.saved_path.name == "analysis.json.pdf"
+    assert rb.saved_path.name == "analysis.json (2).pdf"
     # Converting the second file again keeps using its own numbered PDF.
     assert pipeline.convert_any(b, out).saved_path == rb.saved_path
 
@@ -158,18 +157,16 @@ def test_log_keeps_one_previous_generation(isolated_pipeline, monkeypatch):
 
 
 def test_log_folder_is_created_when_missing(isolated_pipeline, monkeypatch, tmp_path):
-    log = tmp_path / "LocalAppData" / "NotebookToPDF" / "conversion_log.txt"
+    log = tmp_path / "LocalAppData" / "File to PDF" / "conversion_log.txt"
     monkeypatch.setattr(pipeline, "LOG_PATH", log)
     pipeline._append_log("first entry")
     assert log.read_text(encoding="utf-8").startswith("first entry")
 
 
-@pytest.mark.parametrize("frozen", [False, True])
-def test_packaged_app_logs_to_local_app_data(tmp_path, frozen):
+def test_log_lives_in_local_app_data(tmp_path):
     # Module-level paths are fixed at import, so check them in a fresh process.
-    code = f"import sys; sys.frozen = {frozen}; import pipeline; print(pipeline.LOG_PATH)"
+    code = "from topdf import pipeline; print(pipeline.LOG_PATH)"
     env = {**os.environ, "LOCALAPPDATA": str(tmp_path)}
     out = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env,
                          capture_output=True, text=True, check=True).stdout.strip()
-    expected = tmp_path / "NotebookToPDF" if frozen else REPO
-    assert Path(out) == expected / "conversion_log.txt"
+    assert Path(out) == tmp_path / "File to PDF" / "conversion_log.txt"

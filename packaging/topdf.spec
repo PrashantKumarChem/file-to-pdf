@@ -3,12 +3,12 @@
 # Build from the repository root (PowerShell):
 #     pip install -r requirements.txt -r packaging/requirements.txt
 #     $env:PLAYWRIGHT_BROWSERS_PATH = "0"; python -m playwright install --only-shell chromium
-#     python -m PyInstaller --noconfirm packaging/file_to_pdf.spec
+#     python -m PyInstaller --noconfirm packaging/topdf.spec
 #     python packaging/smoke_test.py dist/FileToPDF
 #
 # dist/FileToPDF/ then holds two programs sharing one runtime:
-#     File to PDF.exe   the window
-#     topdf.exe         the command line (notebook_to_pdf_cli.py)
+#     File to PDF.exe   the window (topdf.gui)
+#     topdf.exe         the command line (topdf.cli)
 #
 # PLAYWRIGHT_BROWSERS_PATH=0 installs Chromium's headless shell inside the
 # Playwright package, so it is collected with the package's other data;
@@ -34,7 +34,8 @@ os.environ["PATH"] = os.pathsep.join(
     if p.is_dir()
 )
 
-ROOT = Path(SPECPATH).parent
+HERE = Path(SPECPATH)
+ROOT = HERE.parent
 # nbconvert's own templates (lab, base) are installed outside site-packages;
 # the frozen jupyter_core looks for them under sys.prefix/share/jupyter.
 STOCK_TEMPLATES = Path(sys.prefix) / "share" / "jupyter" / "nbconvert" / "templates"
@@ -47,15 +48,18 @@ if not any(BROWSERS.glob("chromium_headless_shell-*")):
 if any(BROWSERS.glob("chromium-*")):
     sys.exit(f"full Chromium found in {BROWSERS}: install with --only-shell to keep the app small")
 
-ENTRY_SCRIPTS = {"notebook_to_pdf_gui": "File to PDF", "notebook_to_pdf_cli": "topdf"}
+# Entry script in this folder -> program name. Each script only calls into the
+# topdf package, which is collected from the repository root.
+ENTRY_SCRIPTS = {"launch_window": "File to PDF", "launch_cli": "topdf"}
 
 # One analysis for both programs: they import the same modules, and two
 # separate analyses held two full dependency graphs in memory at once.
 analysis = Analysis(
-    [str(ROOT / f"{script}.py") for script in ENTRY_SCRIPTS],
+    [str(HERE / f"{script}.py") for script in ENTRY_SCRIPTS],
     pathex=[str(ROOT)],
     datas=[
-        (str(ROOT / "nbconvert-templates"), "nbconvert-templates"),
+        # converters.py loads the notebook template from next to itself.
+        (str(ROOT / "topdf" / "templates"), "topdf/templates"),
         (str(STOCK_TEMPLATES), "share/jupyter/nbconvert/templates"),
     ],
     # Markdown loads its extensions by name at runtime.
@@ -73,12 +77,12 @@ def scripts_for(script):
 
 
 window_exe = EXE(
-    pyz, scripts_for("notebook_to_pdf_gui"), [],
-    exclude_binaries=True, name=ENTRY_SCRIPTS["notebook_to_pdf_gui"], console=False, upx=False,
+    pyz, scripts_for("launch_window"), [],
+    exclude_binaries=True, name=ENTRY_SCRIPTS["launch_window"], console=False, upx=False,
 )
 command_line_exe = EXE(
-    pyz, scripts_for("notebook_to_pdf_cli"), [],
-    exclude_binaries=True, name=ENTRY_SCRIPTS["notebook_to_pdf_cli"], console=True, upx=False,
+    pyz, scripts_for("launch_cli"), [],
+    exclude_binaries=True, name=ENTRY_SCRIPTS["launch_cli"], console=True, upx=False,
 )
 COLLECT(
     window_exe, command_line_exe, analysis.binaries, analysis.datas,

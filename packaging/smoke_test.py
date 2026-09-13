@@ -28,14 +28,15 @@ NOTEBOOK = {
     "metadata": {}, "nbformat": 4, "nbformat_minor": 5,
 }
 INPUTS = {
-    "Compound1.json": '{\n  "name": "water",\n  "mass": 18.015\n}\n',
+    "data.json": '{\n  "name": "water",\n  "mass": 18.015\n}\n',
     "notes.md": "# Notes\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```python\nx = 1\n```\n",
     "fit.py": "def f(x):\n    return x  # comment\n",
     "geometry.xyz": "3\nwater\nO 0 0 0.117\n",
     "analysis.ipynb": json.dumps(NOTEBOOK),
 }
-EXPECTED = {"Compound1.json.pdf", "notes.md.pdf", "fit.py.pdf", "geometry.xyz.pdf", "analysis.pdf"}
-WINDOW_TITLE = "File -> PDF"
+EXPECTED = {"data.json.pdf", "notes.md.pdf", "fit.py.pdf", "geometry.xyz.pdf", "analysis.pdf"}
+APP_NAME = "File to PDF"
+WINDOW_TITLE = APP_NAME
 # PyInstaller's windowed bootloader reports a crash in a dialog with this title.
 CRASH_TITLE = "Unhandled exception in script"
 
@@ -69,8 +70,8 @@ def check_command_line(app: Path, tmp: Path) -> list[str]:
         data = pdf.read_bytes()
         if not data.startswith(b"%PDF-") or len(data) < 1000:
             problems.append(f"{pdf.name} is not a real PDF")
-    if not (tmp / "NotebookToPDF" / "conversion_log.txt").is_file():
-        problems.append("no log under LOCALAPPDATA\\NotebookToPDF")
+    if not (tmp / APP_NAME / "conversion_log.txt").is_file():
+        problems.append(f"no log under LOCALAPPDATA\\{APP_NAME}")
     return problems
 
 

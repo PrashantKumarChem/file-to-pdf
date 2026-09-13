@@ -1,14 +1,15 @@
 """
-File -> PDF from the command line: the window's conversion, for folders,
+File to PDF from the command line: the window's conversion, for folders,
 scripts and batches.
 
-    python notebook_to_pdf_cli.py Compound1.ipynb data\\*.json
-    python notebook_to_pdf_cli.py "D:\\Paper\\SI files" --recursive --next-to-source
-    python notebook_to_pdf_cli.py notes.md --out C:\\PDFs
+    topdf analysis.ipynb data\\*.json
+    topdf "C:\\Projects\\results" --recursive --next-to-source
+    topdf notes.md --out C:\\PDFs
 
-Output, names and the log are exactly as in the window (see README). Each
-file prints one status line. Exit code: 0 when everything converted, 1 when a
-file failed or a path matched nothing, 2 when there was nothing to convert.
+From source, run `python -m topdf` with the same arguments. Output, names and
+the log are exactly as in the window (see README). Each file prints one status
+line. Exit code: 0 when everything converted, 1 when a file failed or a path
+matched nothing, 2 when there was nothing to convert.
 """
 
 import argparse
@@ -17,8 +18,7 @@ import os
 import sys
 from pathlib import Path
 
-import converters
-import pipeline
+from topdf import __version__, converters, pipeline
 
 
 def _hidden(path: Path, root: Path) -> bool:
@@ -70,7 +70,7 @@ def collect(args: list[str], recursive: bool = False) -> tuple[list[Path], list[
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="notebook_to_pdf_cli",
+        prog="topdf",
         description="Convert notebooks, JSON, Markdown, code and text files to PDF, 1:1.",
     )
     parser.add_argument("paths", nargs="+", help="files, folders or wildcards")
@@ -81,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
                        help="save each PDF next to the file it came from")
     parser.add_argument("-r", "--recursive", action="store_true",
                         help="also convert files in subfolders of the folders given")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args(argv)
     # Paths and statuses can hold any character; never let printing them fail.
     sys.stdout.reconfigure(errors="replace")

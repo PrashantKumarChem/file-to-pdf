@@ -1,12 +1,12 @@
 """
-Format adapters + shared HTML->PDF engine for the Notebook/File -> PDF tool.
+Format adapters and the shared HTML -> PDF engine.
 
 Architecture: one PDF engine, many small "render to HTML" adapters.
 Every file, notebooks included, is turned into an HTML string here and printed
 to PDF by one Chromium/Playwright engine. Notebooks are exported by nbconvert's
-HTML exporter with the pdf-nowrap-fix template and printed the way nbconvert's
-webpdf exporter prints them, so their PDFs are the ones `nbconvert --to webpdf`
-produced, without a second Python process.
+HTML exporter with the bundled topdf-notebook template and printed the way
+nbconvert's webpdf exporter prints them, so their PDFs are the ones
+`nbconvert --to webpdf` produced, without a second Python process.
 
 Public API:
     render(path) -> Rendered                # routes by kind_for(path): PDF + failed web requests
@@ -141,11 +141,10 @@ def read_text(path: Path) -> str:
 class PaperStyle(Style):
     """The syntax palette for every highlighted file: JSON, code, Markdown code.
 
-    Deliberately muted: the JSON notebook pages are mostly long InChI and
-    SMILES strings, and editor-bright colors on those tire the eye over many
-    pages. Keys (and markup tags) bold maroon, strings green, true/false/null
-    and other keywords purple, comments grey; numbers and punctuation stay in
-    the body text color.
+    Deliberately muted: JSON data files can run to many pages of long string
+    values, and editor-bright colors on those tire the eye. Keys (and markup
+    tags) bold maroon, strings green, true/false/null and other keywords
+    purple, comments grey; numbers and punctuation stay in the body text color.
     """
 
     background_color = "#ffffff"
@@ -253,10 +252,10 @@ _BUILDERS = {
 }
 
 # ---------------------------------------------------------------------------
-# Notebooks: nbconvert's HTML exporter with the template in this repo
+# Notebooks: nbconvert's HTML exporter with the template bundled in this package
 # ---------------------------------------------------------------------------
-TEMPLATE_BASE_DIR = Path(__file__).parent / "nbconvert-templates"
-TEMPLATE_NAME = "pdf-nowrap-fix"
+TEMPLATE_BASE_DIR = Path(__file__).parent / "templates"
+TEMPLATE_NAME = "topdf-notebook"
 
 
 def notebook_to_html(path: Path) -> str:

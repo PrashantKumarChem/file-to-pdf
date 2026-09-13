@@ -1,8 +1,8 @@
 """
-Conversion pipeline for the File -> PDF tool: file in, PDF saved, log written.
+Conversion pipeline: file in, PDF saved, log written.
 
 converters.py prints the file: notebooks (.ipynb) through nbconvert's HTML
-exporter with the custom 'pdf-nowrap-fix' template, so long code lines and
+exporter with the bundled topdf-notebook template, so long code lines and
 output wrap instead of getting clipped off the page edge; JSON, Markdown,
 code and plain text through their own adapters. One Chromium engine prints
 them all. This module names the PDF, writes it with retries and a fallback
@@ -12,32 +12,27 @@ Nothing here imports tkinter, so the pipeline runs and tests without a window.
 """
 
 import os
-import sys
 import time
 import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
-import converters
+from topdf import APP_NAME, converters
 
-# The log sits next to the scripts when run from source. The packaged app may
-# be unpacked somewhere read-only (Program Files), so it logs to the user's
-# local application data instead.
-if getattr(sys, "frozen", False):
-    LOG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "NotebookToPDF"
-else:
-    LOG_DIR = Path(__file__).parent
+# The log lives in the user's local application data: the code may sit in a
+# folder that isn't writable (Program Files, the packaged app), and the log
+# records the full path of every converted file, which doesn't belong next to
+# the code.
+LOG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / APP_NAME
 LOG_PATH = LOG_DIR / "conversion_log.txt"
 LOG_MAX_BYTES = 1_000_000
-# Default output: a plain folder directly under the user profile, which is
-# reliably writable. On this machine a whole set of locations are currently
-# cloud-sync-managed and refusing new-file creation (the D: drive, the
-# G:\My Drive mount, AND the Documents folder -- the last one even
-# carries a ReadOnly attribute). The bare profile root and Desktop are NOT
-# managed and write fine, so we default there and the user can override.
-DEFAULT_OUTPUT_DIR = Path.home() / "Notebook PDFs"
-FALLBACK_DIR = Path.home() / "Desktop" / "NotebookToPDF - could not save"
+# Default output: a plain folder directly under the user profile, outside the
+# Documents folder that sync clients often manage and that can then refuse new
+# files. The user can pick another folder; one that refuses the write sends
+# the PDF to FALLBACK_DIR.
+DEFAULT_OUTPUT_DIR = Path.home() / APP_NAME
+FALLBACK_DIR = Path.home() / "Desktop" / f"{APP_NAME} - could not save"
 
 
 class Result(NamedTuple):
@@ -68,9 +63,9 @@ def convert_file(src_path: Path, output_dir: Path) -> Result:
         full_log = "".join(log_chunks) + "CONVERSION ERROR:\n" + traceback.format_exc()
         _append_log(full_log)
         return Result(False, f"Failed: {e}", full_log, None)
-    # A notebook's PDF is named after the notebook (Compound1.pdf); other files
-    # keep their extension (Compound1.json.pdf), so a notebook and a same-named
-    # data file don't both collapse to Compound1.pdf.
+    # A notebook's PDF is named after the notebook (analysis.pdf); other files
+    # keep their extension (analysis.json.pdf), so a notebook and a same-named
+    # data file don't both collapse to analysis.pdf.
     stem = src_path.stem if converters.kind_for(src_path) == "Notebook" else src_path.name
     failed = rendered.failed_requests
     if failed:
@@ -131,16 +126,14 @@ def _save_pdf_bytes(
 ) -> Result:
     """Write PDF bytes into output_dir, retrying, then falling back.
 
-    Some volumes on this machine (the D: partition, and the G: Google Drive
-    mount) intermittently refuse new-file creation, failing with
-    FileNotFoundError even though the directory lists and stats fine, so the
-    write is retried and, if output_dir keeps refusing, the PDF goes to a
-    guaranteed-writable fallback so a good PDF is never lost.
+    Some folders intermittently refuse new-file creation (cloud-synced ones
+    can fail with FileNotFoundError even though the directory lists and stats
+    fine), so the write is retried and, if output_dir keeps refusing, the PDF
+    goes to a fallback folder so a good PDF is never lost.
 
     Raw byte write (open 'wb') rather than shutil.copy2: copy2 also sets file
-    metadata (os.utime), a second way to fail on the quirky volumes here --
-    content-write can succeed while the metadata step raises. Bytes-only is the
-    minimal, most-compatible operation.
+    metadata (os.utime), a second step that can fail on such folders even
+    after the content was written. Bytes only is the most compatible operation.
     """
     dest = _pdf_destination(output_dir, stem, source)
     # Checked once, before any attempt: a failed partial write must not turn

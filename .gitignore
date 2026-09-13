@@ -1,4 +1,5 @@
-# Runtime output: the log records full paths of every converted file
+# Left in the repository folder by older versions, which logged and staged
+# there; the log records the full path of every converted file
 conversion_log.txt
 conversion_log.old.txt
 _staging/
@@ -6,6 +7,6 @@ _staging/
 __pycache__/
 *.pyc
 
-# PyInstaller output (packaging/file_to_pdf.spec)
+# PyInstaller output (packaging/topdf.spec)
 build/
 dist/
