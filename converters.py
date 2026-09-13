@@ -90,6 +90,29 @@ def dialog_patterns() -> list[str]:
     return sorted(patterns)
 
 
+_BOMS = (
+    (codecs.BOM_UTF32_LE, "utf-32"), (codecs.BOM_UTF32_BE, "utf-32"),
+    (codecs.BOM_UTF8, "utf-8-sig"),
+    (codecs.BOM_UTF16_LE, "utf-16"), (codecs.BOM_UTF16_BE, "utf-16"),
+)
+_BINARY_PROBE_BYTES = 8192
+
+
+def _is_binary(data: bytes) -> bool:
+    # UTF-16 and UTF-32 text is full of NUL bytes but starts with a BOM;
+    # without one, a NUL near the start means binary.
+    return not data.startswith(tuple(bom for bom, _ in _BOMS)) and b"\x00" in data[:_BINARY_PROBE_BYTES]
+
+
+def looks_like_text(path: Path) -> bool:
+    """Whether read_text would accept the file, judged from its first bytes."""
+    try:
+        with open(path, "rb") as f:
+            return not _is_binary(f.read(_BINARY_PROBE_BYTES))
+    except OSError:
+        return True  # unreadable: let the conversion report why
+
+
 def read_text(path: Path) -> str:
     """Decode a text file whatever its encoding; raise for binary files.
 
@@ -99,17 +122,13 @@ def read_text(path: Path) -> str:
     normalized to \\n, as text-mode reading would.
     """
     data = path.read_bytes()
-    for bom, encoding in (
-        (codecs.BOM_UTF32_LE, "utf-32"), (codecs.BOM_UTF32_BE, "utf-32"),
-        (codecs.BOM_UTF8, "utf-8-sig"),
-        (codecs.BOM_UTF16_LE, "utf-16"), (codecs.BOM_UTF16_BE, "utf-16"),
-    ):
+    if _is_binary(data):
+        raise UnsupportedFileError(f"{path.name} is a binary file, not text")
+    for bom, encoding in _BOMS:
         if data.startswith(bom):
             text = data.decode(encoding, errors="replace")
             break
     else:
-        if b"\x00" in data[:8192]:
-            raise UnsupportedFileError(f"{path.name} is a binary file, not text")
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
