@@ -55,6 +55,10 @@ command line.
   as nbconvert's pages always have. If anything the page asks for doesn't
   load (offline, say), the PDF is still saved, the status starts with
   "Warning: ... web resources did not load", and the log lists them.
+- **Batches.** Files queued together (a drop, a multi-select, one
+  command-line run) share one Chromium, which closes as soon as the queue is
+  empty. If Chromium or its Playwright driver dies partway, both are
+  restarted and that file is tried once more.
 - **Log.** Each conversion is appended to `conversion_log.txt` next to the
   scripts; past 1 MB it moves to `conversion_log.old.txt`. Neither is tracked,
   since they record the full paths of converted files.
