@@ -82,5 +82,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
-          gh release create "$GITHUB_REF_NAME" FileToPDF-windows.zip
-          --repo "$GITHUB_REPOSITORY" --title "File to PDF ${GITHUB_REF_NAME#v}" --generate-notes
+          gh release create "${{ github.ref_name }}" FileToPDF-windows.zip
+          --repo "${{ github.repository }}" --title "File to PDF ${GITHUB_REF_NAME#v}" --generate-notes
