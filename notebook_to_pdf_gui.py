@@ -1,13 +1,7 @@
 """
 File -> PDF: pick files and get PDFs out.
 
-Notebooks (.ipynb) go through the nbconvert webpdf pipeline with the custom
-'pdf-nowrap-fix' template (nbconvert-templates/pdf-nowrap-fix next to this
-file) so long code lines and output
-wrap instead of getting clipped off the page edge. Other formats (JSON,
-Markdown, code, plain text/logs) are handled by converters.py, which renders
-them to styled HTML and prints them through the same Chromium engine. One PDF
-engine, many small adapters.
+Conversion itself lives in pipeline.py.
 
 The UI is CustomTkinter (modern, themed, light/dark aware). CustomTkinter has
 no table widget, so the queue list stays a ttk.Treeview -- it keeps row
@@ -24,13 +18,8 @@ ever arrives un-braced.
 
 import queue
 import subprocess
-import sys
-import tempfile
 import threading
-import time
 import tkinter as tk
-import traceback
-from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, ttk
 
@@ -38,161 +27,7 @@ import customtkinter as ctk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
 import converters
-
-# nbconvert runs in a child process of the interpreter this GUI runs under. The
-# launcher starts the GUI with pythonw.exe; the child uses its console sibling
-# python.exe (its window is suppressed by CREATE_NO_WINDOW).
-_CONSOLE_PYTHON = Path(sys.executable).with_name("python.exe")
-PYTHON_EXE = str(_CONSOLE_PYTHON if _CONSOLE_PYTHON.exists() else Path(sys.executable))
-TEMPLATE_BASE_DIR = str(Path(__file__).parent / "nbconvert-templates")
-TEMPLATE_NAME = "pdf-nowrap-fix"
-LOG_PATH = Path(__file__).parent / "conversion_log.txt"
-STAGING_DIR = Path(__file__).parent / "_staging"
-# Default output: a plain folder directly under the user profile, which is
-# reliably writable. On this machine a whole set of locations are currently
-# cloud-sync-managed and refusing new-file creation (the D: drive, the
-# G:\My Drive mount, AND the Documents folder -- the last one even
-# carries a ReadOnly attribute). The bare profile root and Desktop are NOT
-# managed and write fine, so we default there and the user can override.
-DEFAULT_OUTPUT_DIR = Path.home() / "Notebook PDFs"
-FALLBACK_DIR = Path.home() / "Desktop" / "NotebookToPDF - could not save"
-
-
-def convert_notebook(nb_path: Path, output_dir: Path) -> tuple[bool, str, str, Path | None]:
-    """Returns (success, status_text, full_log_text, saved_path).
-
-    nbconvert always writes to a local staging directory first, then the
-    finished PDF is copied into the requested output folder. Writing
-    directly into the requested folder turned out to be unreliable: some
-    volumes on this machine (the D: partition, and the G: Google Drive
-    mount) currently refuse ALL new-file creation, failing with
-    FileNotFoundError even though the directory lists and stats fine.
-    Keeping nbconvert's own write on local staging (C:) means a successful
-    conversion is never at the mercy of that, and only the final copy needs
-    retries / a fallback location. saved_path is where the PDF actually
-    ended up (requested folder, or the fallback), or None on failure.
-    """
-    STAGING_DIR.mkdir(parents=True, exist_ok=True)
-    log_chunks = [f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {nb_path}\n"]
-
-    with tempfile.TemporaryDirectory(dir=STAGING_DIR) as tmp_dir_str:
-        tmp_dir = Path(tmp_dir_str)
-        cmd = [
-            PYTHON_EXE, "-m", "jupyter", "nbconvert",
-            "--to", "webpdf",
-            "--template", TEMPLATE_NAME,
-            f"--TemplateExporter.extra_template_basedirs={TEMPLATE_BASE_DIR}",
-            "--output", nb_path.stem,
-            "--output-dir", str(tmp_dir),
-            str(nb_path),
-        ]
-        log_chunks.append(f"cmd: {cmd}\n")
-        try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=600,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-        except subprocess.TimeoutExpired:
-            full_log = "".join(log_chunks) + "TIMED OUT after 10 minutes\n"
-            _append_log(full_log)
-            return False, "Failed: timed out after 10 minutes", full_log, None
-
-        log_chunks.append(
-            f"return code: {result.returncode}\n"
-            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}\n"
-        )
-
-        if result.returncode != 0:
-            full_log = "".join(log_chunks)
-            _append_log(full_log)
-            lines = [l for l in result.stderr.strip().splitlines() if l.strip()]
-            short = lines[-1] if lines else "Unknown error (see log)"
-            return False, f"Failed: {short}", full_log, None
-
-        produced = tmp_dir / f"{nb_path.stem}.pdf"
-        if not produced.exists():
-            full_log = "".join(log_chunks) + f"nbconvert reported success but {produced} is missing\n"
-            _append_log(full_log)
-            return False, "Failed: PDF missing after conversion (see log)", full_log, None
-
-        return _save_pdf_bytes(produced.read_bytes(), nb_path.stem, output_dir, log_chunks)
-
-
-def convert_file(src_path: Path, output_dir: Path) -> tuple[bool, str, str, Path | None]:
-    """Convert a non-notebook file (JSON/Markdown/code/text) to PDF.
-
-    Renders the file to styled HTML via converters.py, then prints it to PDF
-    with the shared Chromium engine, and saves it with the same retry/fallback
-    logic as notebooks.
-    """
-    log_chunks = [f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {src_path}\n"]
-    try:
-        pdf_bytes = converters.file_to_pdf_bytes(src_path)
-    except Exception as e:  # noqa: BLE001 - surface any adapter/engine failure
-        full_log = "".join(log_chunks) + "CONVERSION ERROR:\n" + traceback.format_exc()
-        _append_log(full_log)
-        return False, f"Failed: {e}", full_log, None
-    # Keep the source extension in the PDF name (e.g. Compound1.json.pdf) so a
-    # notebook and a same-named data file don't both collapse to Compound1.pdf.
-    return _save_pdf_bytes(pdf_bytes, src_path.name, output_dir, log_chunks)
-
-
-def convert_any(path: Path, output_dir: Path) -> tuple[bool, str, str, Path | None]:
-    """Route a file to the right converter by extension."""
-    if path.suffix.lower() == ".ipynb":
-        return convert_notebook(path, output_dir)
-    return convert_file(path, output_dir)
-
-
-def _save_pdf_bytes(
-    data: bytes, stem: str, output_dir: Path, log_chunks: list
-) -> tuple[bool, str, str, Path | None]:
-    """Write PDF bytes into output_dir, retrying, then falling back.
-
-    Raw byte write (open 'wb') rather than shutil.copy2: copy2 also sets file
-    metadata (os.utime), a second way to fail on the quirky volumes here --
-    content-write can succeed while the metadata step raises. Bytes-only is the
-    minimal, most-compatible operation. If output_dir keeps refusing the write,
-    save to a guaranteed-writable fallback so a good PDF is never lost.
-    """
-    dest = output_dir / f"{stem}.pdf"
-    last_error = None
-    for attempt in range(4):
-        try:
-            if not output_dir.exists():
-                output_dir.mkdir(parents=True, exist_ok=True)
-            with open(dest, "wb") as f:
-                f.write(data)
-            last_error = None
-            break
-        except OSError as e:
-            last_error = e
-            log_chunks.append(f"copy attempt {attempt + 1} to {dest} failed: {e}\n")
-            time.sleep(0.6 * (attempt + 1))
-
-    if last_error is None:
-        full_log = "".join(log_chunks) + f"Saved to {dest}\n"
-        _append_log(full_log)
-        return True, f"Done -> {dest}", full_log, dest
-
-    FALLBACK_DIR.mkdir(parents=True, exist_ok=True)
-    fallback_dest = FALLBACK_DIR / f"{stem}.pdf"
-    with open(fallback_dest, "wb") as f:
-        f.write(data)
-    status = f"Saved to fallback (couldn't write {output_dir}): {fallback_dest}"
-    log_chunks.append(status + "\n")
-    full_log = "".join(log_chunks)
-    _append_log(full_log)
-    return True, status, full_log, fallback_dest
-
-
-def _append_log(text: str) -> None:
-    try:
-        with open(LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(text + "\n" + ("=" * 80) + "\n")
-    except OSError:
-        pass
-
+import pipeline
 
 ctk.set_appearance_mode("system")   # follows Windows light/dark
 ctk.set_default_color_theme("blue")
@@ -226,10 +61,15 @@ class App:
         # (a queue of N conversions no longer spawns N Explorer windows). Reset
         # in _enqueue_paths when a fresh batch is dropped in.
         self._opened_dirs: set[str] = set()
-        self.row_by_path: dict[str, str] = {}
+        # The last non-custom output option, restored if the folder picker is
+        # cancelled before any custom folder was chosen.
+        self._last_plain_mode = "local"
         self.full_message_by_row: dict[str, str] = {}
-        self.work_queue: "queue.Queue[Path]" = queue.Queue()
-        self.result_queue: "queue.Queue[tuple]" = queue.Queue()
+        # Jobs are (row_id, path, output_dir); results are (row_id, Result),
+        # with None as the Result meaning "started". Keying by Treeview row id
+        # keeps a file dropped twice as two independent rows.
+        self.work_queue: "queue.Queue[tuple[str, Path, Path]]" = queue.Queue()
+        self.result_queue: "queue.Queue[tuple[str, pipeline.Result | None]]" = queue.Queue()
         self._last_output_dir: Path | None = None
 
         self._build_ui()
@@ -281,7 +121,7 @@ class App:
         opts.grid(row=2, column=0, sticky="ew", padx=16, pady=4)
         opts.grid_columnconfigure(3, weight=1)
         ctk.CTkRadioButton(
-            opts, text=f"Save to  {DEFAULT_OUTPUT_DIR}   (recommended)",
+            opts, text=f"Save to  {pipeline.DEFAULT_OUTPUT_DIR}   (recommended)",
             variable=self.output_mode, value="local",
             command=self._update_output_label,
         ).grid(row=0, column=0, columnspan=4, sticky="w", padx=12, pady=(12, 4))
@@ -376,7 +216,9 @@ class App:
 
     # -------------------------------------------------------------- actions ---
     def _update_output_label(self):
-        if self.output_mode.get() != "custom":
+        mode = self.output_mode.get()
+        if mode != "custom":
+            self._last_plain_mode = mode
             self.output_label.configure(text="")
 
     def _choose_output_dir(self):
@@ -384,14 +226,24 @@ class App:
         if chosen:
             self.custom_output_dir = Path(chosen)
             self.output_label.configure(text=str(self.custom_output_dir))
-        else:
-            self.output_mode.set("same")
-            self._update_output_label()
+        elif self.custom_output_dir is None:
+            # Cancelled with no folder to fall back on: return to the option
+            # that was selected, instead of switching to some other destination.
+            self.output_mode.set(self._last_plain_mode)
+
+    def _output_dir_for(self, path: Path) -> Path:
+        mode = self.output_mode.get()
+        if mode == "custom" and self.custom_output_dir:
+            return self.custom_output_dir
+        if mode == "same":
+            return path.parent
+        return pipeline.DEFAULT_OUTPUT_DIR  # "local", the reliable default
 
     def _browse_files(self):
-        supported = " ".join(
-            "*" + e for e in sorted({".ipynb", *converters.SUPPORTED_EXTENSIONS})
-        )
+        # Built from the converters' own routing (Pygments' lexer table), so it
+        # never lags behind what actually converts. The dialog shows only the
+        # label, not the several hundred patterns.
+        supported = " ".join(["*.ipynb", *converters.dialog_patterns()])
         paths = filedialog.askopenfilenames(
             title="Choose files",
             filetypes=[
@@ -428,51 +280,49 @@ class App:
     def _enqueue_paths(self, paths):
         # New batch: let each output folder pop open once more.
         self._opened_dirs.clear()
-        handled = {".ipynb", *converters.SUPPORTED_EXTENSIONS}
         for raw in paths:
             path = Path(raw)
             # Unknown extensions still convert (routed to the text adapter), so
             # accept anything that's a file; only skip directories.
             if not path.is_file():
                 continue
-            note = "" if path.suffix.lower() in handled else " (as text)"
+            recognized = path.suffix.lower() == ".ipynb" or converters.is_recognized(path)
+            note = "" if recognized else " (as text)"
             row_id = self.tree.insert("", "end", values=(path.name, "Queued" + note))
-            self.row_by_path[str(path)] = row_id
-            self.work_queue.put(path)
+            # The destination is fixed here, on the Tk thread: changing the
+            # output option later only affects files added later, and the
+            # worker never has to read Tk variables.
+            self.work_queue.put((row_id, path, self._output_dir_for(path)))
 
     def _start_worker(self):
         threading.Thread(target=self._worker_loop, daemon=True).start()
 
     def _worker_loop(self):
+        # Off the Tk thread: reads work_queue, writes result_queue, nothing else.
+        # pipeline.convert_any never raises, so this loop outlives any bad file.
         while True:
-            path = self.work_queue.get()
-            mode = self.output_mode.get()
-            if mode == "custom" and self.custom_output_dir:
-                output_dir = self.custom_output_dir
-            elif mode == "same":
-                output_dir = path.parent
-            else:  # "local" -- the reliable default
-                output_dir = DEFAULT_OUTPUT_DIR
-            self.result_queue.put((path, None, "Converting…", "", None))
-            ok, short_status, full_log, saved_path = convert_any(path, output_dir)
-            self.result_queue.put((path, ok, short_status, full_log, saved_path))
+            row_id, path, output_dir = self.work_queue.get()
+            self.result_queue.put((row_id, None))
+            self.result_queue.put((row_id, pipeline.convert_any(path, output_dir)))
 
     def _poll_results(self):
         try:
             while True:
-                path, ok, short_status, full_log, saved_path = self.result_queue.get_nowait()
-                row_id = self.row_by_path.get(str(path))
-                if row_id is None:
+                row_id, result = self.result_queue.get_nowait()
+                if not self.tree.exists(row_id):  # removed by "Clear list"
                     continue
-                self.tree.set(row_id, "status", short_status)
-                if ok is not None:
-                    self.full_message_by_row[row_id] = full_log
-                if ok and saved_path is not None:
-                    self._last_output_dir = saved_path.parent
-                    if self.auto_open.get() and str(saved_path.parent) not in self._opened_dirs:
-                        self._opened_dirs.add(str(saved_path.parent))
+                if result is None:
+                    self.tree.set(row_id, "status", "Converting…")
+                    continue
+                self.tree.set(row_id, "status", result.status)
+                self.full_message_by_row[row_id] = result.log
+                if result.ok and result.saved_path is not None:
+                    folder = result.saved_path.parent
+                    self._last_output_dir = folder
+                    if self.auto_open.get() and str(folder) not in self._opened_dirs:
+                        self._opened_dirs.add(str(folder))
                         # select the file in Explorer so the user sees it directly
-                        subprocess.run(["explorer", "/select,", str(saved_path)])
+                        subprocess.Popen(["explorer", "/select,", str(result.saved_path)])
         except queue.Empty:
             pass
         self.root.after(150, self._poll_results)
@@ -480,12 +330,11 @@ class App:
     def _clear_list(self):
         for row_id in self.tree.get_children():
             self.tree.delete(row_id)
-        self.row_by_path.clear()
         self.full_message_by_row.clear()
 
     def _open_last_output(self):
         target = self._last_output_dir or Path.home()
-        subprocess.run(["explorer", str(target)])
+        subprocess.Popen(["explorer", str(target)])
 
     def _copy_selected_error(self):
         selection = self.tree.selection()
@@ -498,9 +347,10 @@ class App:
         self.root.clipboard_append(message)
 
     def _open_log_file(self):
-        if not LOG_PATH.exists():
-            LOG_PATH.touch()
-        subprocess.run(["notepad.exe", str(LOG_PATH)])
+        if not pipeline.LOG_PATH.exists():
+            pipeline.LOG_PATH.touch()
+        # Popen, not run: waiting for the editor to exit would freeze the window.
+        subprocess.Popen(["notepad.exe", str(pipeline.LOG_PATH)])
 
 
 def main():
