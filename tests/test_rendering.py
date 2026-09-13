@@ -103,6 +103,15 @@ def test_browser_is_closed_when_printing_fails(monkeypatch):
     assert threading.active_count() == before
 
 
+def test_a_chromium_path_too_long_for_windows_fails_with_an_explanation(monkeypatch):
+    from playwright.async_api._generated import BrowserType
+
+    too_long = "C:\\" + "deep\\" * 60 + "chrome-headless-shell.exe"
+    monkeypatch.setattr(BrowserType, "executable_path", property(lambda self: too_long))
+    with pytest.raises(RuntimeError, match=f"{len(too_long)} characters"):
+        converters.html_to_pdf("<p>x</p>")
+
+
 def test_markdown_image_resolves_next_to_the_source(tmp_path):
     folder = tmp_path / "notes with spaces"
     folder.mkdir()

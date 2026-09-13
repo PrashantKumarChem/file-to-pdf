@@ -92,6 +92,44 @@ python notebook_to_pdf_cli.py notes.md --out C:\PDFs
   earlier PDF. Convert same-named files in one run to get
   `Compound1.json (2).pdf`.
 
+## Windows app without Python
+
+GitHub Actions builds a standalone copy with PyInstaller
+(`packaging/file_to_pdf.spec`, workflow `.github/workflows/windows-app.yml`)
+and checks it with `packaging/smoke_test.py`. Pushing a `v*` tag attaches
+`FileToPDF-windows.zip` to a GitHub release; other runs keep the zip as a
+workflow artifact. The repository is private, so downloading either needs a
+GitHub sign-in with access to it.
+
+Unzip it to a short folder path and run the programs below. Chromium sits
+about 135 characters deep inside the app folder, and Windows won't start a
+program whose path is 260 characters or longer. So keep the folder's own
+path under about 120 characters: `C:\Users\<you>\Downloads\FileToPDF` is
+fine; a deeply nested synced folder may not be. If the path is too long,
+conversions fail with a message saying so.
+
+- `File to PDF.exe`, the window;
+- `topdf.exe`, the command line, with the same options as
+  `notebook_to_pdf_cli.py`. Add the folder to `PATH` to use it from any
+  terminal.
+
+It bundles Python, nbconvert's templates and Chromium's headless shell, so
+nothing else needs installing. Differences from running from source:
+
+- The log goes to `%LOCALAPPDATA%\NotebookToPDF`, since the app's own folder
+  may not be writable.
+- The programs are unsigned, so Windows SmartScreen asks before the first run.
+- Notebooks still load MathJax and chart libraries from the web when printed.
+
+To build it locally (PowerShell, from the repository root):
+
+```
+pip install -r requirements.txt -r packaging/requirements.txt
+$env:PLAYWRIGHT_BROWSERS_PATH = "0"; python -m playwright install --only-shell chromium
+python -m PyInstaller --noconfirm packaging/file_to_pdf.spec
+python packaging/smoke_test.py dist/FileToPDF
+```
+
 ## Restoring on a machine
 
 1. Install the dependencies and the Chromium build Playwright uses:

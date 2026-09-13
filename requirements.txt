@@ -4,3 +4,4 @@ Pygments==2.19.1
 Markdown==3.10.2
 playwright==1.61.0
 nbconvert==7.16.6
+ipython==8.32.0

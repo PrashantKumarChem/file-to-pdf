@@ -356,6 +356,7 @@ class App:
 
     def _open_log_file(self):
         if not pipeline.LOG_PATH.exists():
+            pipeline.LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
             pipeline.LOG_PATH.touch()
         # Popen, not run: waiting for the editor to exit would freeze the window.
         subprocess.Popen(["notepad.exe", str(pipeline.LOG_PATH)])

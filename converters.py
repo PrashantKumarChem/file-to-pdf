@@ -413,7 +413,18 @@ class _Renderer:
 
                 self._playwright = await async_playwright().start()
             if self._browser is None:
-                self._browser = await self._playwright.chromium.launch(
+                chromium = self._playwright.chromium
+                # Windows won't start a program whose path is 260 characters or
+                # longer, and Chromium then fails with a bare "spawn ... ENOENT".
+                # The packaged app keeps Chromium about 135 characters deep, so
+                # an app folder with a long path runs into this.
+                if os.name == "nt" and len(chromium.executable_path) >= 260:
+                    raise RuntimeError(
+                        f"Chromium's path is {len(chromium.executable_path)} characters, past "
+                        "Windows' 260-character limit for starting programs; move the app "
+                        "to a folder with a shorter path"
+                    )
+                self._browser = await chromium.launch(
                     handle_sigint=False, handle_sigterm=False, handle_sighup=False
                 )
             return self._browser

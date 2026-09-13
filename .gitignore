@@ -5,3 +5,7 @@ _staging/
 
 __pycache__/
 *.pyc
+
+# PyInstaller output (packaging/file_to_pdf.spec)
+build/
+dist/
