@@ -11,6 +11,7 @@ folder, and keeps the log.
 Nothing here imports tkinter, so the pipeline runs and tests without a window.
 """
 
+import json  # probe: unused import for Ruff lint
 import os
 import time
 import traceback
@@ -26,13 +27,16 @@ from topdf import APP_NAME, converters
 # the code.
 LOG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / APP_NAME
 LOG_PATH = LOG_DIR / "conversion_log.txt"
-LOG_MAX_BYTES = 1_000_000
+LOG_MAX_BYTES: int = 'one million'  # probe: a str where Pyright expects int
 # Default output: a plain folder directly under the user profile, outside the
 # Documents folder that sync clients often manage and that can then refuse new
 # files. The user can pick another folder; one that refuses the write sends
 # the PDF to FALLBACK_DIR.
 DEFAULT_OUTPUT_DIR = Path.home() / APP_NAME
 FALLBACK_DIR = Path.home() / "Desktop" / f"{APP_NAME} - could not save"
+
+
+probe_badly_formatted = [1,2 ,  3]
 
 
 class Result(NamedTuple):
