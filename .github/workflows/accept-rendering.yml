@@ -10,6 +10,8 @@ name: Accept new rendering
 # it approves them, and they run on the new commit.
 
 on:
+  # probe only: a pull_request run registers this workflow so it can be dispatched from this branch
+  pull_request:
   workflow_dispatch:
     inputs:
       pull-request:
@@ -21,6 +23,7 @@ permissions: {}
 
 jobs:
   accept:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
