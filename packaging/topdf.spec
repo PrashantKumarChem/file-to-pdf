@@ -7,14 +7,20 @@
 #     python packaging/smoke_test.py dist/FileToPDF
 #
 # dist/FileToPDF/ then holds two programs sharing one runtime:
-#     File to PDF.exe   the window (topdf.gui)
-#     topdf.exe         the command line (topdf.cli)
+#     File to PDF.exe            the window (topdf.gui)
+#     topdf.exe                  the command line (topdf.cli)
+#     LICENSE.txt                the app's license
+#     THIRD-PARTY-NOTICES.txt    the licenses of everything bundled
 #
 # PLAYWRIGHT_BROWSERS_PATH=0 installs Chromium's headless shell inside the
 # Playwright package, so it is collected with the package's other data;
 # frozen, Playwright looks there by itself.
 
+import importlib.metadata
 import os
+import platform
+import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -66,6 +72,15 @@ analysis = Analysis(
     hiddenimports=collect_submodules("markdown.extensions"),
     excludes=["fitz", "pymupdf", "pytest", "psutil"],
 )
+
+# Playwright installs ffmpeg next to Chromium but only runs it to record
+# video, which the app never does. Leaving it out saves 3 MB and keeps its
+# LGPL binary out of the app. (winldd stays: Playwright uses it to explain
+# why a browser failed to start.)
+_UNUSED = re.compile(r"(^|[\\/])\.local-browsers[\\/]ffmpeg-")
+analysis.datas = [entry for entry in analysis.datas if not _UNUSED.search(entry[0])]
+analysis.binaries = [entry for entry in analysis.binaries if not _UNUSED.search(entry[0])]
+
 pyz = PYZ(analysis.pure)
 
 
@@ -88,3 +103,97 @@ COLLECT(
     window_exe, command_line_exe, analysis.binaries, analysis.datas,
     name="FileToPDF", upx=False,
 )
+
+# License notices. COLLECT has filled the app folder by now; the notices are
+# written next to the programs so they ship in the zip.
+APP = Path(DISTPATH) / "FileToPDF"
+_LICENSE_NAME = re.compile(r"(LICEN[CS]E|COPYING|NOTICE)", re.IGNORECASE)
+
+
+def bundled_distributions():
+    # Map every collected file back to the installed package that owns it, so
+    # the notices cover exactly the packages that ship, however they got in.
+    owners = {}
+    for dist in importlib.metadata.distributions():
+        for file in dist.files or []:
+            owners[os.path.normcase(os.path.abspath(dist.locate_file(file)))] = dist
+    found = {}
+    for toc in (analysis.scripts, analysis.pure, analysis.binaries, analysis.datas):
+        for _dest, source, _typecode in toc:
+            if isinstance(source, str) and source:
+                dist = owners.get(os.path.normcase(os.path.abspath(source)))
+                if dist is not None:
+                    found[dist.metadata["Name"].lower()] = dist
+    return [found[name] for name in sorted(found)]
+
+
+def license_texts(dist):
+    # Wheels keep license files in .dist-info/licenses/ (PEP 639) or, in
+    # older ones, at the top of .dist-info.
+    texts = []
+    for file in dist.files or []:
+        parts = file.parts
+        if not parts[0].endswith(".dist-info"):
+            continue
+        if (len(parts) >= 3 and parts[1] == "licenses") or (len(parts) == 2 and _LICENSE_NAME.match(file.name)):
+            texts.append((file.name, Path(dist.locate_file(file)).read_text(encoding="utf-8", errors="replace")))
+    return texts
+
+
+def license_label(dist):
+    metadata = dist.metadata
+    expression = metadata.get("License-Expression")
+    if expression:
+        return expression
+    classifiers = [c.split("::")[-1].strip() for c in metadata.get_all("Classifier") or [] if c.startswith("License ::")]
+    first_line = (metadata.get("License") or "").strip().splitlines()[:1]
+    return ", ".join(classifiers) or (first_line[0] if first_line else "see the license text below")
+
+
+def python_license():
+    # python.org builds keep LICENSE.txt at the prefix; conda names it
+    # LICENSE_PYTHON.txt.
+    for name in ("LICENSE.txt", "LICENSE_PYTHON.txt"):
+        if (_base / name).is_file():
+            return (_base / name).read_text(encoding="utf-8", errors="replace")
+    sys.exit(f"no Python license file in {_base}")
+
+
+def rule(title, char="="):
+    return f"{title}\n{char * len(title)}\n"
+
+
+sections = [
+    rule("Third-party software in File to PDF"),
+    "File to PDF is licensed under the MIT License (LICENSE.txt). It bundles the\n"
+    "software below, each under its own license.\n",
+    rule(f"Python {platform.python_version()}"),
+    python_license(),
+]
+
+# Components that carry their own license files inside the app folder:
+# Chromium, the Node.js runtime Playwright runs on, Tcl/Tk, and files vendored
+# inside packages. Their texts are large, so they are referenced, not copied.
+in_folder = sorted(
+    path.relative_to(APP) for path in APP.rglob("*")
+    if path.is_file() and _LICENSE_NAME.match(path.name) and not any(p.endswith(".dist-info") for p in path.parts)
+)
+sections.append(rule("License files inside this folder"))
+sections.append("\n".join(str(path) for path in in_folder) + "\n")
+
+sections.append(rule("Python packages"))
+missing = []
+for dist in bundled_distributions():
+    texts = license_texts(dist)
+    if not texts:
+        missing.append(f"{dist.metadata['Name']} {dist.version}")
+        continue
+    sections.append(rule(f"{dist.metadata['Name']} {dist.version}", "-"))
+    sections.append(f"License: {license_label(dist)}\n")
+    for name, text in texts:
+        sections.append(f"[{name}]\n{text.strip()}\n")
+if missing:
+    sys.exit("no license file found for bundled packages: " + ", ".join(missing))
+
+shutil.copyfile(ROOT / "LICENSE", APP / "LICENSE.txt")
+(APP / "THIRD-PARTY-NOTICES.txt").write_text("\n".join(sections), encoding="utf-8")

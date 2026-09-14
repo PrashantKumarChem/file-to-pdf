@@ -3,8 +3,9 @@
     python packaging/smoke_test.py dist/FileToPDF
 
 Standard library only, so it runs against a fresh build on any Python.
-Exit code 0 when the packaged command line converted everything into real
-PDFs and logged to LOCALAPPDATA, and the window started without an error.
+Exit code 0 when the app folder carries its license notices and no ffmpeg,
+the packaged command line converted everything into real PDFs and logged to
+LOCALAPPDATA, and the window started without an error.
 """
 
 import ctypes
@@ -117,12 +118,28 @@ def check_window(app: Path, tmp: Path, timeout: float = 60) -> list[str]:
             process.wait()
 
 
+def check_notices(app: Path) -> list[str]:
+    problems = [
+        f"{name} is missing from the app folder"
+        for name in ("LICENSE.txt", "THIRD-PARTY-NOTICES.txt")
+        if not (app / name).is_file()
+    ]
+    if not problems:
+        notices = (app / "THIRD-PARTY-NOTICES.txt").read_text(encoding="utf-8")
+        for needle in ("Python 3.", "LICENSE.headless_shell", "nbconvert ", "playwright "):
+            if needle not in notices:
+                problems.append(f"THIRD-PARTY-NOTICES.txt doesn't mention {needle.strip()}")
+    if any(app.rglob("ffmpeg-*")):
+        problems.append("ffmpeg is bundled, but the app never records video")
+    return problems
+
+
 def main() -> int:
     app = Path(sys.argv[1]).resolve()
     size = sum(p.stat().st_size for p in app.rglob("*") if p.is_file())
     print(f"{app}: {size / 1e6:.0f} MB")
     with tempfile.TemporaryDirectory() as tmp:
-        problems = check_command_line(app, Path(tmp)) + check_window(app, Path(tmp))
+        problems = check_notices(app) + check_command_line(app, Path(tmp)) + check_window(app, Path(tmp))
     for problem in problems:
         print(f"SMOKE TEST FAILED: {problem}", file=sys.stderr)
     return 1 if problems else 0
