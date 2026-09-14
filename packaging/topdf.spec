@@ -1,10 +1,10 @@
 # PyInstaller spec for the Windows app that runs without a Python install.
 #
 # Build from the repository root (PowerShell):
-#     pip install -r requirements.txt -r packaging/requirements.txt
-#     $env:PLAYWRIGHT_BROWSERS_PATH = "0"; python -m playwright install --only-shell chromium
-#     python -m PyInstaller --noconfirm packaging/topdf.spec
-#     python packaging/smoke_test.py dist/FileToPDF
+#     uv sync --group packaging
+#     $env:PLAYWRIGHT_BROWSERS_PATH = "0"; uv run python -m playwright install --only-shell chromium
+#     uv run python -m PyInstaller --noconfirm packaging/topdf.spec
+#     uv run python packaging/smoke_test.py dist/FileToPDF
 #
 # dist/FileToPDF/ then holds two programs sharing one runtime:
 #     File to PDF.exe            the window (topdf.gui)

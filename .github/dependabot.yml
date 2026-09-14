@@ -11,10 +11,9 @@ updates:
       actions:
         patterns: ["*"]
 
-  - package-ecosystem: pip
-    directories:
-      - /
-      - /packaging
+  # pyproject.toml and uv.lock
+  - package-ecosystem: uv
+    directory: /
     schedule:
       interval: monthly
     groups:

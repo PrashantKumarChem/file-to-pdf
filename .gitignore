@@ -7,6 +7,9 @@ _staging/
 __pycache__/
 *.pyc
 
+# The environment "uv sync" creates
+.venv/
+
 # PyInstaller output (packaging/topdf.spec)
 build/
 dist/
