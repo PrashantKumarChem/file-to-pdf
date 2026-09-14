@@ -50,6 +50,8 @@ python-preference = "only-managed"
 [tool.ruff]
 # The longest line before Ruff was added was 116 characters.
 line-length = 120
+# Test input printed exactly as it is, not code of this project.
+extend-exclude = ["tests/visual/corpus"]
 
 [tool.ruff.lint]
 select = [
@@ -65,6 +67,7 @@ select = [
 
 [tool.pyright]
 include = ["topdf", "tests", "packaging", "ci"]
+exclude = ["tests/visual/corpus", "**/__pycache__"]
 pythonVersion = "3.14"
 pythonPlatform = "Windows"
 venvPath = "."

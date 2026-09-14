@@ -1,0 +1,3 @@
+# The visual comparison renders its corpus byte for byte (a CRLF log file, a
+# UTF-16 text file, a PNG): never convert line endings there.
+tests/visual/corpus/** -text
