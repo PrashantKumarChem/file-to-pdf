@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-import converters
+from topdf import converters
 
 
 @pytest.mark.parametrize(
     "name, kind",
     [
-        ("Compound1.ipynb", "Notebook"),
+        ("analysis.ipynb", "Notebook"),
         ("OLD.IPYNB", "Notebook"),
         ("data.json", "JSON"),
         ("notes.md", "Markdown"),
@@ -32,7 +32,7 @@ def test_kind_for(name, kind):
 
 
 def test_is_recognized_flags_only_unknown_types():
-    assert converters.is_recognized(Path("Compound1.ipynb"))
+    assert converters.is_recognized(Path("analysis.ipynb"))
     assert converters.is_recognized(Path("run.log"))
     assert converters.is_recognized(Path("script.py"))
     assert not converters.is_recognized(Path("mystery.zzz"))
@@ -162,12 +162,12 @@ def test_code_highlighting_handles_crlf_sources(tmp_path):
 
 
 def test_notebook_html_comes_from_the_bundled_template(tmp_path):
-    nb = tmp_path / "Compound1.ipynb"
+    nb = tmp_path / "analysis.ipynb"
     nb.write_text(json.dumps({
         "cells": [{"id": "c1", "cell_type": "code", "execution_count": 1, "metadata": {},
                    "source": "x = 1", "outputs": []}],
         "metadata": {}, "nbformat": 4, "nbformat_minor": 5,
     }), encoding="utf-8")
     html = converters.file_to_html(nb)
-    assert "<title>Compound1</title>" in html  # nbconvert's page, named after the notebook
-    assert "white-space: pre-wrap !important" in html  # pdf-nowrap-fix, not the stock lab template
+    assert "<title>analysis</title>" in html  # nbconvert's page, named after the notebook
+    assert "white-space: pre-wrap !important" in html  # the bundled template, not the stock lab one

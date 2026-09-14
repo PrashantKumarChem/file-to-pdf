@@ -6,10 +6,9 @@ import time
 
 import pytest
 
-import converters
-import pipeline
+from topdf import converters, pipeline
 
-gui = pytest.importorskip("notebook_to_pdf_gui")
+gui = pytest.importorskip("topdf.gui")
 
 
 @pytest.fixture

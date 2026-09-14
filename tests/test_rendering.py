@@ -12,8 +12,7 @@ import pytest
 fitz = pytest.importorskip("fitz")  # PyMuPDF, from requirements-dev.txt
 pytest.importorskip("playwright")
 
-import converters  # noqa: E402
-import pipeline  # noqa: E402
+from topdf import converters, pipeline  # noqa: E402
 
 pytestmark = pytest.mark.slow
 
@@ -45,7 +44,7 @@ def test_letter_pages_and_no_threads_left_behind():
 
 
 def test_json_pdf_is_raw_json_in_the_paper_palette(tmp_path):
-    f = tmp_path / "Compound1.json"
+    f = tmp_path / "data.json"
     f.write_text('{\n  "name": "null inside",\n  "mass": 1.0,\n  "ok": true\n}\n', encoding="utf-8")
     page = pdf_doc(converters.file_to_pdf_bytes(f))[0]
     spans = [
@@ -209,7 +208,7 @@ def test_notebook_converts_with_the_bundled_template(isolated_pipeline, tmp_path
     doc = pdf_doc(result.saved_path.read_bytes())
     assert doc.metadata["title"] == "sample"
     text = " ".join(doc[0].get_text().split())
-    # pdf-nowrap-fix wraps the long line instead of clipping it at the page
+    # The bundled template wraps the long line instead of clipping it at the page
     # edge, and PyMuPDF only extracts text inside the page.
     assert text.count("wrap me") == 40
 

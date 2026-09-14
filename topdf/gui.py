@@ -1,5 +1,5 @@
 """
-File -> PDF: pick files and get PDFs out.
+File to PDF window: pick files and get PDFs out.
 
 Conversion itself lives in pipeline.py.
 
@@ -11,9 +11,9 @@ window root mixes CTk with tkinterdnd2 so drag-and-drop still works.
 Files can be added two ways: drag-and-drop from Explorer, or the standard
 Windows "Open" dialog (multi-select via ctrl/shift-click). Both are kept. On
 a real drop the OS delivers each path brace-wrapped, so Tcl's splitlist parses
-them correctly even when they contain spaces (e.g. "G:\\My Drive\\..."); the
-handler additionally validates each result and falls back gracefully if a path
-ever arrives un-braced.
+them correctly even when they contain spaces; the handler additionally
+validates each result and falls back gracefully if a path ever arrives
+un-braced.
 """
 
 import queue
@@ -26,8 +26,7 @@ from tkinter import filedialog, ttk
 import customtkinter as ctk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
-import converters
-import pipeline
+from topdf import APP_NAME, converters, pipeline
 
 ctk.set_appearance_mode("system")   # follows Windows light/dark
 ctk.set_default_color_theme("blue")
@@ -49,7 +48,7 @@ class CTkDnD(ctk.CTk, TkinterDnD.DnDWrapper):
 class App:
     def __init__(self, root: CTkDnD):
         self.root = root
-        root.title("File -> PDF")
+        root.title(APP_NAME)
         root.geometry("820x560")
         root.minsize(680, 440)
 

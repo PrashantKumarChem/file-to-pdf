@@ -14,7 +14,7 @@ fitz = pytest.importorskip("fitz")
 psutil = pytest.importorskip("psutil")
 pytest.importorskip("playwright")
 
-import converters  # noqa: E402
+from topdf import converters  # noqa: E402
 
 pytestmark = pytest.mark.slow
 
@@ -106,7 +106,8 @@ def test_browser_processes_end_when_the_app_exits_mid_batch():
     child = textwrap.dedent(f"""
         import os, sys
         sys.path.insert(0, {str(REPO)!r})
-        import psutil, converters
+        import psutil
+        from topdf import converters
         with converters.batch():
             converters.html_to_pdf("<p>x</p>")
             print(" ".join(str(p.pid) for p in psutil.Process().children(recursive=True)), flush=True)

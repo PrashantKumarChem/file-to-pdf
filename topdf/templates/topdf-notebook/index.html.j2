@@ -32,9 +32,9 @@
 }
 
 /* Input code stays full size (readable). Only OUTPUT blocks -- which is where
-   the wide fixed-width table dumps live (astropy pprint) -- render smaller, so
-   those tables fit the page width and keep their column alignment instead of
-   wrapping mid-row. */
+   wide fixed-width tables live (printed DataFrames and similar) -- render
+   smaller, so those tables fit the page width and keep their column alignment
+   instead of wrapping mid-row. */
 .jp-OutputArea-output pre,
 .jp-RenderedText pre {
   font-size: 0.8em !important;
@@ -45,14 +45,13 @@
   overflow-x: visible !important;
 }
 
-/* Wide generated figures/diagrams (graphviz apparatus SVGs from
-   A.visualize()/A.describe(), matplotlib/altair charts, and any other wide
-   image or SVG cell output) overflow the page and get clipped off the right
-   edge in the print-to-PDF pass. Graphviz emits an <svg> with explicit
-   width/height in pt (e.g. 888pt) plus a viewBox, so max-width:100% overrides
-   the pt width and height:auto scales it down proportionally to fit the page.
-   Scoped to output areas so input code and markdown-embedded images are
-   untouched. */
+/* Wide generated figures and diagrams (Graphviz SVGs, matplotlib and Altair
+   charts, and any other wide image or SVG cell output) overflow the page and
+   get clipped off the right edge in the print-to-PDF pass. Graphviz emits an
+   <svg> with explicit width/height in pt (e.g. 888pt) plus a viewBox, so
+   max-width:100% overrides the pt width and height:auto scales it down
+   proportionally to fit the page. Scoped to output areas so input code and
+   markdown-embedded images are untouched. */
 .jp-OutputArea-output svg,
 .jp-OutputArea-output img,
 .jp-RenderedSVG svg,

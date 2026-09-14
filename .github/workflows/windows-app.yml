@@ -1,12 +1,15 @@
 name: Windows app
 
-# Builds the standalone Windows app (packaging/file_to_pdf.spec) and checks
-# it with packaging/smoke_test.py. Pull requests that touch packaging build
-# it; pushing a v* tag also attaches the zip to a GitHub release.
+# Builds the standalone Windows app (packaging/topdf.spec) and checks it with
+# packaging/smoke_test.py. Pull requests that touch the app's code, its
+# dependencies or its packaging build it; pushing a v* tag also attaches the
+# zip to a GitHub release.
 
 on:
   pull_request:
     paths:
+      - "topdf/**"
+      - "requirements.txt"
       - "packaging/**"
       - ".github/workflows/windows-app.yml"
   push:
@@ -31,6 +34,15 @@ jobs:
             requirements.txt
             packaging/requirements.txt
 
+      - name: Check that the tag matches topdf.__version__
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = python -c "import topdf; print(topdf.__version__)"
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "tag ${{ github.ref_name }} does not match topdf.__version__ $version"
+          }
+
       - name: Install dependencies
         run: python -m pip install -r requirements.txt -r packaging/requirements.txt
 
@@ -40,7 +52,7 @@ jobs:
         run: python -m playwright install --only-shell chromium
 
       - name: Build
-        run: python -m PyInstaller --noconfirm packaging/file_to_pdf.spec
+        run: python -m PyInstaller --noconfirm packaging/topdf.spec
 
       - name: Smoke test
         run: python packaging/smoke_test.py dist/FileToPDF
@@ -71,4 +83,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "${{ github.ref_name }}" FileToPDF-windows.zip
-          --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --generate-notes
+          --repo "${{ github.repository }}" --title "File to PDF ${GITHUB_REF_NAME#v}" --generate-notes
