@@ -19,6 +19,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Also the parent commits: in a pull request's merge commit the
+          # first parent is the base branch, which the coverage floor check
+          # compares with.
+          fetch-depth: 2
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
 
@@ -33,5 +39,17 @@ jobs:
       - name: Install Chromium's headless shell
         run: uv run --no-sync python -m playwright install --only-shell chromium
 
-      - name: Run the tests
-        run: uv run --no-sync python -m pytest
+      - name: Run the tests, measuring coverage
+        run: uv run --no-sync coverage run -m pytest
+
+      # The table goes into the job summary; the second report's exit code
+      # is the step's, and it fails when the total is below the floor.
+      - name: Check coverage against the floor in pyproject.toml
+        shell: pwsh
+        run: |
+          uv run --no-sync coverage report --format=markdown >> $env:GITHUB_STEP_SUMMARY
+          uv run --no-sync coverage report
+
+      - name: Check that the coverage floor wasn't lowered
+        if: ${{ !cancelled() }}
+        run: uv run --no-sync python ci/coverage_floor.py HEAD^1

@@ -46,10 +46,16 @@ names or extra sections to the output won't be merged.
 ```
 uv run python -m pytest                 # everything, about 30 seconds
 uv run python -m pytest -m "not slow"   # skip Chromium and nbconvert rendering
+uv run coverage run -m pytest           # everything, measuring coverage of topdf/
+uv run coverage report                  # fails below the floor
 ```
 
 The GUI tests open a hidden window, so run them from a desktop session. Add or
 update tests for any change in behavior.
+
+The coverage floor is `fail_under` in `pyproject.toml`. CI fails when the
+total drops below it, and when a pull request lowers it: raise it when your
+tests add coverage, never lower it.
 
 ## Style and types
 

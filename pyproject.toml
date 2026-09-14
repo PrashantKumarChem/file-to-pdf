@@ -20,6 +20,7 @@ dependencies = [
 # (uv run ruff check, uv run ruff format --check, uv run pyright).
 dev = [
     "pytest==9.1.1",
+    "coverage==7.16.1",
     "PyMuPDF==1.28.2",
     "psutil==7.2.2",
     "ruff==0.16.7",
@@ -58,8 +59,20 @@ select = [
 ]
 
 [tool.pyright]
-include = ["topdf", "tests", "packaging"]
+include = ["topdf", "tests", "packaging", "ci"]
 pythonVersion = "3.14"
 pythonPlatform = "Windows"
 venvPath = "."
 venv = ".venv"
+
+[tool.coverage.run]
+source = ["topdf"]
+branch = true
+
+[tool.coverage.report]
+precision = 1
+show_missing = true
+# The floor: "coverage report" fails below it. It may only rise, which
+# ci/coverage_floor.py checks against the base branch; raise it when tests
+# add coverage.
+fail_under = 0
