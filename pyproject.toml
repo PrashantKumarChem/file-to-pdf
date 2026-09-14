@@ -74,5 +74,6 @@ precision = 1
 show_missing = true
 # The floor: "coverage report" fails below it. It may only rise, which
 # ci/coverage_floor.py checks against the base branch; raise it when tests
-# add coverage.
-fail_under = 0
+# add coverage. Set at 91 when the Windows runner and a local run both
+# measured 91.4%, leaving room for thread timing in the GUI tests.
+fail_under = 91
