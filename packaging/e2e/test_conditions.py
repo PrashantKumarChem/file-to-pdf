@@ -138,7 +138,9 @@ def test_a_folder_that_refuses_writes_sends_the_pdf_to_the_fallback_folder(app, 
     locked = sandbox.root / "locked"
     locked.mkdir()
     user = subprocess.run(["whoami"], capture_output=True, text=True, check=True).stdout.strip()
-    subprocess.run(["icacls", str(locked), "/deny", f"{user}:(OI)(CI)(W)"], check=True, capture_output=True)
+    # Deny creating files and folders in it (WD, AD) rather than all of write (W): W includes
+    # SYNCHRONIZE, which also stops the folder being listed, and the test lists it at the end.
+    subprocess.run(["icacls", str(locked), "/deny", f"{user}:(OI)(CI)(WD,AD)"], check=True, capture_output=True)
     try:
         with pytest.raises(PermissionError):  # otherwise this test proves nothing
             (locked / "check.txt").write_text("x")
