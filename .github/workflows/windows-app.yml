@@ -1,20 +1,16 @@
 name: Windows app
 
-# Builds the standalone Windows app (packaging/topdf.spec) and checks it with
-# packaging/smoke_test.py. Pull requests that touch the app's code, its
-# dependencies or its packaging build it; pushing a v* tag also attaches the
-# zip to a GitHub release. Actions are pinned to commits (Dependabot updates
-# them).
+# Builds the standalone Windows app (packaging/topdf.spec), checks the build
+# with packaging/smoke_test.py, and tests the zip itself end to end
+# (packaging/e2e): unzipped into a fresh folder, topdf.exe on every file type
+# and the window driven by script. Pull requests build it when they touch
+# the app's code, its dependencies, its packaging or this workflow; the "app"
+# job always reports, so it can be a required check. Pushing a v* tag also
+# attaches the zip to a GitHub release, once the end-to-end tests pass.
+# Actions are pinned to commits (Dependabot updates them).
 
 on:
   pull_request:
-    paths:
-      - "topdf/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".python-version"
-      - "packaging/**"
-      - ".github/workflows/windows-app.yml"
   push:
     tags: ["v*"]
   workflow_dispatch:
@@ -23,7 +19,40 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.diff.outputs.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # In a pull request's merge commit the first parent is the base
+          # branch, so HEAD^1..HEAD is what the pull request changes.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Does this change touch the app?
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "Not a pull request: build and test the app."
+            echo "app=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only HEAD^1 HEAD | tee changed.txt
+          if grep -qE '^(topdf/|packaging/|pyproject\.toml$|uv\.lock$|\.python-version$|\.github/workflows/windows-app\.yml$)' changed.txt; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing the app is built from changed."
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -82,9 +111,80 @@ jobs:
           path: FileToPDF-windows.zip
           retention-days: 14
 
+  e2e:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+
+      # The test tools (pytest, PyMuPDF, pywinauto). The app under test is
+      # the zip, which brings its own Python and Chromium.
+      - name: Install the test tools
+        run: uv sync --locked
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: FileToPDF-windows
+          path: ${{ runner.temp }}/zip
+
+      - name: Unzip the app into a fresh folder
+        shell: pwsh
+        run: Expand-Archive -Path "$env:RUNNER_TEMP\zip\FileToPDF-windows.zip" -DestinationPath "$env:RUNNER_TEMP\fresh"
+
+      # A short temporary folder, so the long-path tests can build paths of
+      # exact lengths; it is uploaded when a test fails.
+      - name: Test the unzipped app end to end
+        env:
+          PYTHONIOENCODING: utf-8
+        run: >
+          uv run --no-sync python -m pytest packaging/e2e -v
+          --app "$env:RUNNER_TEMP\fresh\FileToPDF" --basetemp "$env:RUNNER_TEMP\e2e"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: e2e-failure
+          path: ${{ runner.temp }}/e2e
+          retention-days: 14
+
+  # The check to require: passes when the app was built and passed its
+  # end-to-end tests, or when nothing it is built from changed.
+  app:
+    needs: [changes, build, e2e]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Decide
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          APP: ${{ needs.changes.outputs.app }}
+          BUILD: ${{ needs.build.result }}
+          E2E: ${{ needs.e2e.result }}
+        run: |
+          echo "changes: $CHANGES (app touched: $APP), build: $BUILD, end-to-end: $E2E"
+          if [ "$CHANGES" != "success" ]; then
+            echo "::error::Couldn't tell whether this change touches the app."
+            exit 1
+          fi
+          if [ "$APP" = "false" ]; then
+            echo "Nothing the app is built from changed; no build needed."
+            exit 0
+          fi
+          if [ "$BUILD" = "success" ] && [ "$E2E" = "success" ]; then
+            exit 0
+          fi
+          echo "::error::The app build ($BUILD) or its end-to-end tests ($E2E) didn't pass."
+          exit 1
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the release and upload the zip
