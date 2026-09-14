@@ -243,7 +243,7 @@ class App:
         # Built from the converters' own routing (Pygments' lexer table), so it
         # never lags behind what actually converts. The dialog shows only the
         # label, not the several hundred patterns.
-        supported = " ".join(["*.ipynb", *converters.dialog_patterns()])
+        supported = " ".join(converters.dialog_patterns())
         paths = filedialog.askopenfilenames(
             title="Choose files",
             filetypes=[
@@ -286,8 +286,7 @@ class App:
             # accept anything that's a file; only skip directories.
             if not path.is_file():
                 continue
-            recognized = path.suffix.lower() == ".ipynb" or converters.is_recognized(path)
-            note = "" if recognized else " (as text)"
+            note = "" if converters.is_recognized(path) else " (as text)"
             row_id = self.tree.insert("", "end", values=(path.name, "Queued" + note))
             # The destination is fixed here, on the Tk thread: changing the
             # output option later only affects files added later, and the

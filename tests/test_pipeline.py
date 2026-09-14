@@ -10,7 +10,7 @@ FAKE_PDF = b"%PDF-1.7 fake"
 
 @pytest.fixture
 def stub_engine(monkeypatch):
-    monkeypatch.setattr(converters, "file_to_pdf_bytes", lambda path: FAKE_PDF)
+    monkeypatch.setattr(converters, "render", lambda path: converters.Rendered(FAKE_PDF, []))
 
 
 def make(folder, name, text="{}"):
@@ -27,6 +27,13 @@ def test_saves_into_output_dir(isolated_pipeline, stub_engine, tmp_path):
     assert result.saved_path == isolated_pipeline["DEFAULT_OUTPUT_DIR"] / "a.json.pdf"
     assert result.saved_path.read_bytes() == FAKE_PDF
     assert result.status == f"Done -> {result.saved_path}"
+
+
+def test_notebook_pdf_is_named_after_the_notebook(isolated_pipeline, stub_engine, tmp_path):
+    out = isolated_pipeline["DEFAULT_OUTPUT_DIR"]
+    notebook = pipeline.convert_any(make(tmp_path / "src", "Compound1.ipynb"), out)
+    data = pipeline.convert_any(make(tmp_path / "src", "Compound1.json"), out)
+    assert (notebook.saved_path.name, data.saved_path.name) == ("Compound1.pdf", "Compound1.json.pdf")
 
 
 def test_reconverting_a_file_replaces_its_own_pdf(isolated_pipeline, stub_engine, tmp_path):
@@ -61,6 +68,19 @@ def test_pdf_left_by_an_earlier_session_is_replaced_and_reported(
     result = pipeline.convert_any(make(tmp_path / "src", "a.json"), out)
     assert result.saved_path == out / "a.json.pdf"
     assert "replaced existing PDF" in result.status
+
+
+def test_web_resources_that_did_not_load_are_a_warning(isolated_pipeline, monkeypatch, tmp_path):
+    url = "https://cdn.jsdelivr.net/npm/vega@5"
+    monkeypatch.setattr(converters, "render", lambda path: converters.Rendered(FAKE_PDF, [url]))
+    result = pipeline.convert_any(make(tmp_path / "src", "chart.ipynb"), isolated_pipeline["DEFAULT_OUTPUT_DIR"])
+    assert result.ok
+    assert result.saved_path.read_bytes() == FAKE_PDF
+    assert result.status == (
+        "Warning: 1 web resource did not load; charts or math may be missing. "
+        f"Done -> {result.saved_path}"
+    )
+    assert url in isolated_pipeline["LOG_PATH"].read_text(encoding="utf-8")
 
 
 def test_falls_back_when_output_dir_refuses_writes(
@@ -114,12 +134,11 @@ def test_binary_input_is_a_failed_result(isolated_pipeline, tmp_path):
     assert result.status == "Failed: blob.bin is a binary file, not text"
 
 
-def test_missing_interpreter_is_reported(isolated_pipeline, monkeypatch, tmp_path):
-    monkeypatch.setattr(pipeline, "PYTHON_EXE", str(tmp_path / "no-python.exe"))
-    nb = make(tmp_path / "src", "n.ipynb")
-    result = pipeline.convert_any(nb, tmp_path / "out")
+def test_unreadable_notebook_is_a_failed_result(isolated_pipeline, tmp_path):
+    result = pipeline.convert_any(make(tmp_path / "src", "broken.ipynb", "not json"), tmp_path / "out")
     assert not result.ok
-    assert result.status.startswith("Failed: could not start nbconvert")
+    assert result.status.startswith("Failed: ")
+    assert "CONVERSION ERROR" in result.log
 
 
 def test_log_keeps_one_previous_generation(isolated_pipeline, monkeypatch):

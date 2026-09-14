@@ -2,17 +2,19 @@
 Format adapters + shared HTML->PDF engine for the Notebook/File -> PDF tool.
 
 Architecture: one PDF engine, many small "render to HTML" adapters.
-Everything except Jupyter notebooks is turned into a styled HTML string here,
-then printed to PDF by the same Chromium/Playwright pipeline that nbconvert's
-webpdf exporter uses. Notebooks keep going through nbconvert (see
-pipeline.py) because its rich-output handling is worth reusing.
+Every file, notebooks included, is turned into an HTML string here and printed
+to PDF by one Chromium/Playwright engine. Notebooks are exported by nbconvert's
+HTML exporter with the pdf-nowrap-fix template and printed the way nbconvert's
+webpdf exporter prints them, so their PDFs are the ones `nbconvert --to webpdf`
+produced, without a second Python process.
 
 Public API:
+    render(path) -> Rendered                # routes by kind_for(path): PDF + failed web requests
+    file_to_pdf_bytes(path) -> bytes
     html_to_pdf(html_str) -> bytes
-    file_to_pdf_bytes(path) -> bytes        # routes by kind_for(path)
-    kind_for(path) -> "JSON" | "Markdown" | "Code" | "Text"
+    kind_for(path) -> "Notebook" | "JSON" | "Markdown" | "Code" | "Text"
     is_recognized(path) -> bool             # False: printed as plain text by default
-    dialog_patterns() -> list[str]          # glob patterns for a file picker (no .ipynb)
+    dialog_patterns() -> list[str]          # glob patterns for a file picker
     UnsupportedFileError                    # raised for binary input
 """
 
@@ -24,6 +26,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
@@ -35,6 +38,7 @@ from pygments.util import ClassNotFound
 # ---------------------------------------------------------------------------
 # Routing. Which files count as code is Pygments' decision, not a list here.
 # ---------------------------------------------------------------------------
+NOTEBOOK_EXT = {".ipynb"}
 JSON_EXT = {".json"}
 MD_EXT = {".md", ".markdown"}
 # Plain-text formats Pygments has no lexer for, so the picker offers them and
@@ -65,6 +69,8 @@ def _lexer_for(path: Path, text: str | None = None, **options):
 
 def kind_for(path: Path) -> str:
     ext = path.suffix.lower()
+    if ext in NOTEBOOK_EXT:
+        return "Notebook"
     if ext in JSON_EXT:
         return "JSON"
     if ext in MD_EXT:
@@ -78,7 +84,7 @@ def is_recognized(path: Path) -> bool:
 
 def dialog_patterns() -> list[str]:
     """Glob patterns for every file type handled here, for a file picker filter."""
-    patterns = {"*" + ext for ext in JSON_EXT | MD_EXT | PLAIN_TEXT_EXT}
+    patterns = {"*" + ext for ext in NOTEBOOK_EXT | JSON_EXT | MD_EXT | PLAIN_TEXT_EXT}
     for _name, _aliases, filenames, _mimetypes in get_all_lexers():
         patterns.update(p for p in filenames if _SIMPLE_GLOB.fullmatch(p))
     return sorted(patterns)
@@ -225,27 +231,69 @@ _BUILDERS = {
     "Text": text_to_body,  # the default: anything that isn't binary prints
 }
 
+# ---------------------------------------------------------------------------
+# Notebooks: nbconvert's HTML exporter with the template in this repo
+# ---------------------------------------------------------------------------
+TEMPLATE_BASE_DIR = Path(__file__).parent / "nbconvert-templates"
+TEMPLATE_NAME = "pdf-nowrap-fix"
+
+
+def notebook_to_html(path: Path) -> str:
+    """The notebook as the complete HTML page `nbconvert --to webpdf` printed.
+
+    Same exporter, template and settings as that command, run in this
+    process, so the page is byte-for-byte the one the command printed. Unlike
+    the command, no Jupyter config files are read, so the output doesn't
+    depend on what ~/.jupyter happens to contain.
+    """
+    from nbconvert.exporters import HTMLExporter
+    from traitlets.config import Config
+
+    config = Config()
+    config.TemplateExporter.template_name = TEMPLATE_NAME
+    config.TemplateExporter.extra_template_basedirs = [str(TEMPLATE_BASE_DIR)]
+    html, _resources = HTMLExporter(config=config).from_filename(str(path))
+    return html
+
 
 def file_to_html(path: Path) -> str:
+    if kind_for(path) == "Notebook":
+        return notebook_to_html(path)
     return wrap_html(_BUILDERS[kind_for(path)](path), base_dir=path.parent)
 
 
 # ---------------------------------------------------------------------------
-# Engine: HTML string -> PDF bytes, via the same Chromium path nbconvert uses
+# Engine: HTML string -> PDF bytes through Chromium
 # ---------------------------------------------------------------------------
+class Rendered(NamedTuple):
+    """A printed PDF, plus the web (http/https) resources the page failed to load."""
+
+    pdf: bytes
+    failed_requests: list[str]
+
+
 # Runs after load, before printing. A link to a local file is dead in a PDF,
 # and Chromium would store its absolute file:// target (a local folder path)
 # in the file, so those hrefs are removed and the link text stays. In-page
 # #anchors also resolve to file:// URLs but print as internal jumps, so they
-# are kept.
-_UNLINK_LOCAL_FILES_JS = """() => {
+# are kept. With keepLook the link keeps its color and underline, so a
+# notebook prints exactly as it did before the links were removed; Markdown
+# files print them as plain text.
+_UNLINK_LOCAL_FILES_JS = """(keepLook) => {
   for (const a of document.querySelectorAll('a[href]')) {
-    if (a.protocol === 'file:' && !a.getAttribute('href').startsWith('#')) a.removeAttribute('href');
+    if (a.protocol === 'file:' && !a.getAttribute('href').startsWith('#')) {
+      if (keepLook) {
+        const style = getComputedStyle(a);
+        a.style.color = style.color;
+        a.style.textDecoration = style.textDecoration;
+      }
+      a.removeAttribute('href');
+    }
   }
 }"""
 
 
-async def _render_pdf(url: str) -> bytes:
+async def _render_pdf(url: str, notebook: bool) -> Rendered:
     from playwright.async_api import async_playwright
 
     async with async_playwright() as pw:
@@ -254,12 +302,30 @@ async def _render_pdf(url: str) -> bytes:
         )
         try:
             page = await browser.new_page()
+            failed = []
+            page.on("requestfailed", lambda request: failed.append(request.url))
+            page.on("response", lambda response: _record_http_error(response, failed))
             await page.emulate_media(media="print")
-            await page.goto(url, wait_until="networkidle")
-            await page.evaluate(_UNLINK_LOCAL_FILES_JS)
-            return await page.pdf(print_background=True, prefer_css_page_size=True)
+            if notebook:
+                # As nbconvert's webpdf exporter does: settle 100 ms on each
+                # side of the load, and print at Playwright's default page
+                # size (Letter) with the template's @page margins.
+                await page.wait_for_timeout(100)
+                await page.goto(url, wait_until="networkidle")
+                await page.wait_for_timeout(100)
+            else:
+                await page.goto(url, wait_until="networkidle")
+            await page.evaluate(_UNLINK_LOCAL_FILES_JS, notebook)
+            pdf = await page.pdf(print_background=True, prefer_css_page_size=not notebook)
+            web = [u for u in dict.fromkeys(failed) if u.startswith(("http://", "https://"))]
+            return Rendered(pdf, web)
         finally:
             await browser.close()
+
+
+def _record_http_error(response, failed: list) -> None:
+    if response.status >= 400:
+        failed.append(response.url)
 
 
 def _new_event_loop() -> asyncio.AbstractEventLoop:
@@ -276,7 +342,7 @@ def _run_in_fresh_loop(coro):
         loop.close()
 
 
-def html_to_pdf(html: str) -> bytes:
+def _print_html(html: str, notebook: bool = False) -> Rendered:
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         page_path = Path(tmp) / "page.html"
         page_path.write_bytes(html.encode("utf-8"))  # bytes: no newline translation
@@ -284,8 +350,16 @@ def html_to_pdf(html: str) -> bytes:
         # calling thread already runs one (inside Jupyter, for example). The
         # with-block joins the thread; nothing outlives the call.
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(_run_in_fresh_loop, _render_pdf(page_path.as_uri())).result()
+            return pool.submit(_run_in_fresh_loop, _render_pdf(page_path.as_uri(), notebook)).result()
+
+
+def html_to_pdf(html: str) -> bytes:
+    return _print_html(html).pdf
+
+
+def render(path: Path) -> Rendered:
+    return _print_html(file_to_html(path), notebook=kind_for(path) == "Notebook")
 
 
 def file_to_pdf_bytes(path: Path) -> bytes:
-    return html_to_pdf(file_to_html(path))
+    return render(path).pdf

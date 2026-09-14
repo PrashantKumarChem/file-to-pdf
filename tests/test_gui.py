@@ -13,7 +13,7 @@ gui = pytest.importorskip("notebook_to_pdf_gui")
 
 @pytest.fixture
 def app(isolated_pipeline, monkeypatch):
-    monkeypatch.setattr(converters, "file_to_pdf_bytes", lambda path: b"%PDF-1.7 fake")
+    monkeypatch.setattr(converters, "render", lambda path: converters.Rendered(b"%PDF-1.7 fake", []))
     root = gui.CTkDnD()
     root.withdraw()
     # Tk prints exceptions raised in callbacks and carries on; record them so a

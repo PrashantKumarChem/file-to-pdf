@@ -2,6 +2,7 @@
 
 import base64
 import json
+import socket
 import threading
 
 import pytest
@@ -21,6 +22,15 @@ PNG_8X8 = base64.b64decode(
 
 def pdf_doc(data: bytes):
     return fitz.open(stream=data, filetype="pdf")
+
+
+def write_notebook(path, cells):
+    path.write_text(json.dumps({
+        "cells": cells,
+        "metadata": {"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"}},
+        "nbformat": 4, "nbformat_minor": 5,
+    }), encoding="utf-8")
+    return path
 
 
 def test_letter_pages_and_no_threads_left_behind():
@@ -142,22 +152,55 @@ def test_crlf_text_lays_out_like_lf_text(tmp_path):
     )
 
 
+def test_failed_web_resources_are_reported(tmp_path):
+    with socket.socket() as s:  # a port nothing listens on once closed
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    url = f"http://127.0.0.1:{port}/figure.png"
+    md = tmp_path / "remote.md"
+    md.write_text(f"# Figure\n\n![figure]({url})\n", encoding="utf-8")
+    rendered = converters.render(md)
+    assert rendered.failed_requests == [url]
+    assert "Figure" in pdf_doc(rendered.pdf)[0].get_text()
+
+
 def test_notebook_converts_with_the_bundled_template(isolated_pipeline, tmp_path):
     long_line = "value = '" + "wrap me " * 40 + "'"
-    nb = {
-        "cells": [{
-            "cell_type": "code", "execution_count": 1, "metadata": {},
-            "source": [long_line + "\n", "print('done')"],
-            "outputs": [{"name": "stdout", "output_type": "stream", "text": ["done\n"]}],
-        }],
-        "metadata": {"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"}},
-        "nbformat": 4, "nbformat_minor": 5,
-    }
-    src = tmp_path / "sample.ipynb"
-    src.write_text(json.dumps(nb), encoding="utf-8")
-    result = pipeline.convert_notebook(src, isolated_pipeline["DEFAULT_OUTPUT_DIR"])
+    src = write_notebook(tmp_path / "sample.ipynb", [{
+        "id": "c1", "cell_type": "code", "execution_count": 1, "metadata": {},
+        "source": [long_line + "\n", "print('done')"],
+        "outputs": [{"name": "stdout", "output_type": "stream", "text": ["done\n"]}],
+    }])
+    result = pipeline.convert_any(src, isolated_pipeline["DEFAULT_OUTPUT_DIR"])
     assert result.ok, result.log
-    text = " ".join(pdf_doc(result.saved_path.read_bytes())[0].get_text().split())
+    assert result.saved_path.name == "sample.pdf"
+    doc = pdf_doc(result.saved_path.read_bytes())
+    assert doc.metadata["title"] == "sample"
+    text = " ".join(doc[0].get_text().split())
     # pdf-nowrap-fix wraps the long line instead of clipping it at the page
     # edge, and PyMuPDF only extracts text inside the page.
     assert text.count("wrap me") == 40
+
+
+def test_notebook_links_to_local_files_keep_their_look_but_not_their_path(tmp_path):
+    folder = tmp_path / "Private Folder Name"
+    folder.mkdir()
+    (folder / "data.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    src = write_notebook(folder / "links.ipynb", [{
+        "id": "m1", "cell_type": "markdown", "metadata": {},
+        "source": "See [sibling](data.csv) and [web](https://example.com).",
+    }])
+    data = converters.file_to_pdf_bytes(src)
+    for fragment in (b"Private Folder Name", b"Private%20Folder%20Name", tmp_path.name.encode(), b"file:"):
+        assert fragment not in data
+    page = pdf_doc(data)[0]
+    assert [link.get("uri") for link in page.get_links()] == ["https://example.com/"]
+    colors = {
+        s["text"].strip(): s["color"]
+        for block in page.get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for s in line["spans"]
+    }
+    # The local link lost its target but still prints in the link color, as
+    # notebook PDFs always showed it.
+    assert colors["sibling"] == colors["web"] != colors["See"]

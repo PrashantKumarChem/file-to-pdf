@@ -13,7 +13,6 @@ def isolated_pipeline(tmp_path, monkeypatch):
     """Point every pipeline location at tmp_path and forget earlier PDFs."""
     locations = {
         "LOG_PATH": tmp_path / "log.txt",
-        "STAGING_DIR": tmp_path / "staging",
         "DEFAULT_OUTPUT_DIR": tmp_path / "out",
         "FALLBACK_DIR": tmp_path / "fallback",
     }
