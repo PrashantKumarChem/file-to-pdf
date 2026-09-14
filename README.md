@@ -1,7 +1,8 @@
 # File -> PDF
 
 A small Windows desktop tool that turns files into PDFs. Drop files onto the
-window or pick them with the Open dialog.
+window, pick them with the Open dialog, or convert whole folders from the
+command line.
 
 - `.ipynb` notebooks are exported by nbconvert with the custom
   `pdf-nowrap-fix` template, so long code lines, output tables and wide figures
@@ -19,6 +20,7 @@ window or pick them with the Open dialog.
 | File | Purpose |
 | --- | --- |
 | `notebook_to_pdf_gui.py` | CustomTkinter window: drop zone, output options, queue list, worker thread |
+| `notebook_to_pdf_cli.py` | Command line: files, folders and wildcards, same output as the window |
 | `pipeline.py` | One file in, one PDF saved: output naming, retries, fallback folder, log |
 | `converters.py` | File type routing, text decoding, notebook export, HTML adapters and the HTML -> PDF engine |
 | `Launch Notebook to PDF.vbs` | Starts the GUI with `pythonw.exe` and no console window (the desktop shortcut points here) |
@@ -56,6 +58,35 @@ window or pick them with the Open dialog.
 - **Log.** Each conversion is appended to `conversion_log.txt` next to the
   scripts; past 1 MB it moves to `conversion_log.old.txt`. Neither is tracked,
   since they record the full paths of converted files.
+
+## Command line
+
+The same conversion without the window, for folders, batches and scripts:
+
+```
+python notebook_to_pdf_cli.py Compound1.ipynb data\*.json
+python notebook_to_pdf_cli.py "D:\Paper\SI files" --recursive --next-to-source
+python notebook_to_pdf_cli.py notes.md --out C:\PDFs
+```
+
+- **Inputs.** A file named directly always converts; unknown types print as
+  text. A folder converts every file that prints: recognized types and
+  anything else that reads as text (`.xyz`, `.jdx`, input decks). It skips
+  images, spreadsheets and other binary files, PDFs (so an earlier
+  `--next-to-source` run isn't reprinted), and hidden entries such as
+  `.ipynb_checkpoints`, and lists what it skipped. `--recursive` includes
+  subfolders. Wildcards are expanded by the tool, so they work in cmd and
+  PowerShell.
+- **Output.** PDFs go to `%USERPROFILE%\Notebook PDFs` unless `--out FOLDER`
+  or `--next-to-source` says otherwise. Names, the fallback folder, warnings
+  and the log are the same as in the window.
+- **Result.** Each file prints one status line. The exit code is 0 when
+  everything converted, 1 when a file failed or a path matched nothing, and 2
+  when there was nothing to convert.
+- **Naming across runs.** Each run is a new session, so a later run that
+  converts a different `Compound1.json` into the same folder replaces the
+  earlier PDF. Convert same-named files in one run to get
+  `Compound1.json (2).pdf`.
 
 ## Restoring on a machine
 

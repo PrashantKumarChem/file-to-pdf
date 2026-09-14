@@ -80,6 +80,18 @@ def test_read_text_rejects_binary(tmp_path):
         converters.read_text(f)
 
 
+def test_looks_like_text_agrees_with_read_text(tmp_path):
+    cases = {
+        "geometry.xyz": "3\nwater\nO 0 0 0.117\n".encode("utf-8"),
+        "notes.txt": "Ångström\n".encode("utf-16"),  # NUL bytes, but a BOM
+        "spectrum.png": b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR",
+        "blob.bin": bytes(range(256)),
+    }
+    for name, data in cases.items():
+        (tmp_path / name).write_bytes(data)
+    assert {n for n in cases if converters.looks_like_text(tmp_path / n)} == {"geometry.xyz", "notes.txt"}
+
+
 def printed_text(html: str, preformatted: bool = True) -> str:
     """The text a reader sees: markup stripped, entities decoded.
 
