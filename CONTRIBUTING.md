@@ -52,8 +52,9 @@ update tests for any change in behavior.
 - Branch from `main` and keep each pull request to one change.
 - Describe what changes for someone using the tool, and how you tested it.
 - Update the README when behavior it describes changes.
-- Changes to `topdf/`, `requirements.txt` or `packaging/` build and
-  smoke-test the Windows app on the pull request.
+- Every pull request runs the tests on Windows with Python 3.10 and 3.12.
+  Changes to `topdf/`, `requirements.txt` or `packaging/` also build and
+  smoke-test the Windows app.
 - Pull requests are merged with a merge commit, so each commit should stand
   on its own with a message that says what it does.
 

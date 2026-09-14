@@ -1,5 +1,8 @@
 # File to PDF
 
+[![Tests](https://github.com/PrashantKumarChem/file-to-pdf/actions/workflows/tests.yml/badge.svg)](https://github.com/PrashantKumarChem/file-to-pdf/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A small Windows desktop tool that turns files into PDFs. Drop files onto the
 window, pick them with the Open dialog, or convert whole folders from the
 command line.
