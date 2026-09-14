@@ -1,0 +1,41 @@
+name: Spike dispatch
+
+# Throwaway (never merged). Question: when a workflow commits to a PR branch
+# with GITHUB_TOKEN (which starts no pull_request run) and then dispatches
+# tests.yml on that branch, does the dispatched run's "pytest" check count
+# as the ruleset's required check on the new head?
+
+on:
+  pull_request:
+    types: [opened]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  commit-then-dispatch:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Commit a file with GITHUB_TOKEN, wait, then dispatch tests.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          content=$(date -u +%FT%TZ | base64)
+          gh api -X PUT "repos/$REPO/contents/spike-marker.txt" -f message="Spike: commit made with GITHUB_TOKEN" -f content="$content" -f branch="$BRANCH" --jq .commit.sha
+          echo "committed; waiting 150 s before dispatching"
+          sleep 150
+          gh workflow run tests.yml --repo "$REPO" --ref "$BRANCH"
+          echo "dispatched tests.yml"
+          gh workflow run spike-dispatch.yml --repo "$REPO" --ref "$BRANCH" && echo "dispatch of a branch-only workflow: accepted" || echo "dispatch of a branch-only workflow: refused"
+
+  branch-only:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "a workflow that exists only on this branch ran from workflow_dispatch"
