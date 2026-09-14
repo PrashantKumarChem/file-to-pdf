@@ -9,5 +9,6 @@
 ## Checklist
 
 - [ ] `uv run python -m pytest` passes
+- [ ] `uv run ruff check .`, `uv run ruff format --check .` and `uv run pyright` pass
 - [ ] The README is updated if behavior it describes changed
 - [ ] AI tools used, if any, are named with what they did (see AI_USAGE.md)

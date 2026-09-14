@@ -51,6 +51,17 @@ uv run python -m pytest -m "not slow"   # skip Chromium and nbconvert rendering
 The GUI tests open a hidden window, so run them from a desktop session. Add or
 update tests for any change in behavior.
 
+## Style and types
+
+```
+uv run ruff check .          # lint
+uv run ruff format .         # format (--check to only report)
+uv run pyright               # types
+```
+
+Their versions are locked with the other development tools and their
+settings are in `pyproject.toml`.
+
 ## Dependencies
 
 Dependencies are declared in `pyproject.toml` and locked, with every package
