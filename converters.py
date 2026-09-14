@@ -314,7 +314,10 @@ async def _render_pdf(url: str, notebook: bool) -> Rendered:
                 await page.goto(url, wait_until="networkidle")
                 await page.wait_for_timeout(100)
             else:
-                await page.goto(url, wait_until="networkidle")
+                # The page shell runs no scripts, so once "load" has fired
+                # (every image included, remote ones too) nothing else will
+                # arrive; networkidle only added 500 ms of quiet per file.
+                await page.goto(url, wait_until="load")
             await page.evaluate(_UNLINK_LOCAL_FILES_JS, notebook)
             pdf = await page.pdf(print_background=True, prefer_css_page_size=not notebook)
             web = [u for u in dict.fromkeys(failed) if u.startswith(("http://", "https://"))]

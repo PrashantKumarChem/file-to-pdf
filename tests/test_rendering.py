@@ -1,9 +1,11 @@
 """End-to-end rendering through Chromium and nbconvert. Slower: a few seconds each."""
 
 import base64
+import http.server
 import json
 import socket
 import threading
+import time
 
 import pytest
 
@@ -162,6 +164,33 @@ def test_failed_web_resources_are_reported(tmp_path):
     rendered = converters.render(md)
     assert rendered.failed_requests == [url]
     assert "Figure" in pdf_doc(rendered.pdf)[0].get_text()
+
+
+def test_slow_remote_images_are_waited_for(tmp_path):
+    class SlowImage(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            time.sleep(1)
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(PNG_8X8)))
+            self.end_headers()
+            self.wfile.write(PNG_8X8)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), SlowImage)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        md = tmp_path / "remote.md"
+        md.write_text(f"![dot](http://127.0.0.1:{server.server_address[1]}/dot.png)\n", encoding="utf-8")
+        page = pdf_doc(converters.file_to_pdf_bytes(md))[0]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+    assert [(img[2], img[3]) for img in page.get_images(full=True)] == [(8, 8)]
 
 
 def test_notebook_converts_with_the_bundled_template(isolated_pipeline, tmp_path):
