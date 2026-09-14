@@ -74,6 +74,18 @@ Dependencies are declared in `pyproject.toml` and locked, with every package
 they pull in, in `uv.lock`. To add or change one, edit `pyproject.toml` (or run
 `uv add`), run `uv lock`, and commit both files.
 
+Every pull request, and a weekly run, also checks the supply chain: that
+`uv.lock` matches `pyproject.toml`, that no locked package has a known
+vulnerability, and that the workflows avoid unsafe patterns. To run the same
+checks locally:
+
+```
+uv lock --check
+uv export --frozen --all-groups --format requirements.txt -o locked-requirements.txt
+uv run --group audit pip-audit -r locked-requirements.txt --require-hashes --disable-pip
+uv run --group audit zizmor .github/workflows
+```
+
 ## Pull requests
 
 - Branch from `main` and keep each pull request to one change.
