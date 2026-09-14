@@ -36,6 +36,9 @@ jobs:
       - name: Report the Python and Tk versions
         run: uv run --no-sync python -c "import sys, tkinter; print('Python', sys.version, 'at', sys.base_prefix); print('Tk', tkinter.Tcl().eval('info patchlevel'))"
 
+      - name: Probe, a template injection for zizmor
+        run: echo "${{ github.event.pull_request.title }}"
+
       - name: Install Chromium's headless shell
         run: uv run --no-sync python -m playwright install --only-shell chromium
 

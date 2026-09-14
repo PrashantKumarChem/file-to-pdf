@@ -421,6 +421,9 @@ packaging = [
     { name = "pyinstaller" },
     { name = "pyinstaller-hooks-contrib" },
 ]
+probe = [
+    { name = "pyyaml" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -450,6 +453,7 @@ packaging = [
     { name = "pyinstaller", specifier = "==6.22.3" },
     { name = "pyinstaller-hooks-contrib", specifier = "==2026.7" },
 ]
+probe = [{ name = "pyyaml", specifier = "==5.3" }]
 
 [[package]]
 name = "filelock"
@@ -1249,6 +1253,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/85/9f/01a1a99704853cb63
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/3d/8161f7711c017e01ac9f008dfddd9410dff3674334c233bde66e7ba65bbf/pywin32_ctypes-0.2.3-py3-none-any.whl", hash = "sha256:8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8", size = 30756, upload-time = "2024-08-14T10:15:33.187Z" },
 ]
+
+[[package]]
+name = "pyyaml"
+version = "5.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3d/d9/ea9816aea31beeadccd03f1f8b625ecf8f645bd66744484d162d84803ce5/PyYAML-5.3.tar.gz", hash = "sha256:e9f45bd5b92c7974e59bcd2dcc8631a6b6cc380a904725fce7bc08872e691615", size = 268214, upload-time = "2020-01-06T20:02:47.486Z" }
 
 [[package]]
 name = "pyzmq"
