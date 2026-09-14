@@ -126,8 +126,11 @@ def test_json_tokens_get_the_paper_palette(tmp_path):
     f.write_text('{"key": "null inside", "flag": true, "n": null, "v": 2.50}', encoding="utf-8")
     html = converters.file_to_html(f)
     css = converters._PYGMENTS_CSS
-    assert '<span class="nt">&quot;key&quot;</span>' in html
-    assert '<span class="s2">&quot;null inside&quot;</span>' in html
+    # Pygments 2.21 stopped escaping quotes in element text ("key", not
+    # &quot;key&quot;); a browser reads both the same.
+    html = html.replace("&quot;", '"')
+    assert '<span class="nt">"key"</span>' in html
+    assert '<span class="s2">"null inside"</span>' in html
     assert '<span class="kc">true</span>' in html and '<span class="kc">null</span>' in html
     css = css.lower()
     assert ".source .nt { color: #9b2158; font-weight: bold }" in css

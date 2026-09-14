@@ -7,20 +7,20 @@ requires-python = ">=3.14"
 # checksums; Dependabot proposes updates.
 dependencies = [
     "customtkinter==6.0.0",
-    "tkinterdnd2==0.6.2",
-    "Pygments==2.20.0",
-    "Markdown==3.10.2",
-    "playwright==1.61.0",
+    "tkinterdnd2==0.6.3",
+    "Pygments==2.21.0",
+    "Markdown==3.10.3",
+    "playwright==1.62.0",
     "nbconvert==7.17.1",
-    "ipython==8.32.0",
+    "ipython==9.17.1",
 ]
 
 [dependency-groups]
 # Installed by "uv sync" by default.
 dev = [
-    "pytest==9.0.3",
-    "PyMuPDF==1.27.2.3",
-    "psutil==7.0.0",
+    "pytest==9.1.1",
+    "PyMuPDF==1.28.2",
+    "psutil==7.2.2",
 ]
 # Builds the Windows app: uv sync --group packaging
 packaging = [
