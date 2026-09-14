@@ -98,11 +98,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     failed = 0
-    for n, path in enumerate(files, 1):
-        output_dir = path.parent if args.next_to_source else (args.out or pipeline.DEFAULT_OUTPUT_DIR)
-        result = pipeline.convert_any(path, output_dir)
-        failed += not result.ok
-        print(f"[{n}/{len(files)}] {path.name}: {result.status}", flush=True)
+    with converters.batch():  # one browser for the whole run
+        for n, path in enumerate(files, 1):
+            output_dir = path.parent if args.next_to_source else (args.out or pipeline.DEFAULT_OUTPUT_DIR)
+            result = pipeline.convert_any(path, output_dir)
+            failed += not result.ok
+            print(f"[{n}/{len(files)}] {path.name}: {result.status}", flush=True)
     summary = f"{len(files) - failed} of {len(files)} converted"
     print(summary + (f", {failed} failed (details in {pipeline.LOG_PATH})" if failed else ""))
     return 1 if failed or missing else 0

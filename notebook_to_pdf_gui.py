@@ -299,10 +299,19 @@ class App:
     def _worker_loop(self):
         # Off the Tk thread: reads work_queue, writes result_queue, nothing else.
         # pipeline.convert_any never raises, so this loop outlives any bad file.
+        # Files waiting in the queue share one browser (converters.batch),
+        # which closes as soon as the queue runs dry.
         while True:
-            row_id, path, output_dir = self.work_queue.get()
-            self.result_queue.put((row_id, None))
-            self.result_queue.put((row_id, pipeline.convert_any(path, output_dir)))
+            job = self.work_queue.get()
+            with converters.batch():
+                while job is not None:
+                    row_id, path, output_dir = job
+                    self.result_queue.put((row_id, None))
+                    self.result_queue.put((row_id, pipeline.convert_any(path, output_dir)))
+                    try:
+                        job = self.work_queue.get_nowait()
+                    except queue.Empty:
+                        job = None
 
     def _poll_results(self):
         try:

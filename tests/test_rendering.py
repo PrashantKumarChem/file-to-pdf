@@ -64,27 +64,21 @@ def test_json_pdf_is_raw_json_in_the_paper_palette(tmp_path):
     assert 42 < left < 45  # 0.6in = 43.2pt
 
 
-def test_render_shuts_down_its_thread_pool_and_event_loop(monkeypatch):
-    # Counting threads can't show this: an abandoned pool is often collected
-    # before the count is taken. Check the cleanup calls themselves.
-    shutdowns, loops = [], []
-    real_shutdown = converters.concurrent.futures.ThreadPoolExecutor.shutdown
+def test_a_print_outside_a_batch_stops_its_thread_and_event_loop(monkeypatch):
+    # Counting threads alone can't show this: check the event loop and the
+    # renderer thread themselves.
+    loops = []
     real_new_loop = converters._new_event_loop
-
-    def recording_shutdown(self, *args, **kwargs):
-        shutdowns.append(True)
-        return real_shutdown(self, *args, **kwargs)
 
     def recording_new_loop():
         loop = real_new_loop()
         loops.append(loop)
         return loop
 
-    monkeypatch.setattr(converters.concurrent.futures.ThreadPoolExecutor, "shutdown", recording_shutdown)
     monkeypatch.setattr(converters, "_new_event_loop", recording_new_loop)
     converters.html_to_pdf("<p>x</p>")
-    assert shutdowns
     assert len(loops) == 1 and loops[0].is_closed()
+    assert not any(t.name == "pdf-renderer" for t in threading.enumerate())
 
 
 def test_browser_is_closed_when_printing_fails(monkeypatch):

@@ -1,5 +1,6 @@
 """Drive the real window (withdrawn) through its queue, with the PDF engine stubbed."""
 
+import contextlib
 import gc
 import time
 
@@ -117,6 +118,30 @@ def test_drop_payload_with_spaces(app, tmp_path):
     assert [p.replace("\\", "/") for p in app._parse_drop(payload)] == [
         spaced.as_posix(), plain.as_posix(),
     ]
+
+
+def test_files_queued_together_share_one_batch(app, monkeypatch, tmp_path):
+    events = []
+
+    @contextlib.contextmanager
+    def batch():
+        events.append("open")
+        yield
+        events.append("close")
+
+    def render(path):
+        time.sleep(0.2)  # long enough for the whole drop to be queued
+        events.append(path.name)
+        return converters.Rendered(b"%PDF-1.7 fake", [])
+
+    monkeypatch.setattr(converters, "batch", batch)
+    monkeypatch.setattr(converters, "render", render)
+    app._enqueue_paths([str(write(tmp_path / "src" / f"{name}.json")) for name in "abc"])
+    run_until_settled(app)
+    deadline = time.monotonic() + 5
+    while events[-1:] != ["close"] and time.monotonic() < deadline:
+        time.sleep(0.05)  # the batch closes just after the last result
+    assert events == ["open", "a.json", "b.json", "c.json", "close"]
 
 
 def test_unrecognized_files_are_marked_as_text(app, tmp_path):

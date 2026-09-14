@@ -12,6 +12,7 @@ Public API:
     render(path) -> Rendered                # routes by kind_for(path): PDF + failed web requests
     file_to_pdf_bytes(path) -> bytes
     html_to_pdf(html_str) -> bytes
+    batch()                                 # context manager: prints inside share one browser
     kind_for(path) -> "Notebook" | "JSON" | "Markdown" | "Code" | "Text"
     is_recognized(path) -> bool             # False: printed as plain text by default
     dialog_patterns() -> list[str]          # glob patterns for a file picker
@@ -20,11 +21,12 @@ Public API:
 
 import asyncio
 import codecs
-import concurrent.futures
+import contextlib
 import html as html_lib
 import os
 import re
 import tempfile
+import threading
 from pathlib import Path
 from typing import NamedTuple
 
@@ -159,7 +161,7 @@ _PYGMENTS_CSS = HtmlFormatter(style=PaperStyle).get_style_defs(".source")
 
 # ---------------------------------------------------------------------------
 # HTML shell: Letter pages with 0.6in margins, content only, no header.
-# The @page rule is the only page setup: the print call in _render_pdf passes
+# The @page rule is the only page setup: the print call in _render_page passes
 # prefer_css_page_size and no size or margins of its own.
 # ---------------------------------------------------------------------------
 _SHELL = """<!DOCTYPE html>
@@ -312,37 +314,33 @@ _UNLINK_LOCAL_FILES_JS = """(keepLook) => {
 }"""
 
 
-async def _render_pdf(url: str, notebook: bool) -> Rendered:
-    from playwright.async_api import async_playwright
-
-    async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
-            handle_sigint=False, handle_sigterm=False, handle_sighup=False
-        )
-        try:
-            page = await browser.new_page()
-            failed = []
-            page.on("requestfailed", lambda request: failed.append(request.url))
-            page.on("response", lambda response: _record_http_error(response, failed))
-            await page.emulate_media(media="print")
-            if notebook:
-                # As nbconvert's webpdf exporter does: settle 100 ms on each
-                # side of the load, and print at Playwright's default page
-                # size (Letter) with the template's @page margins.
-                await page.wait_for_timeout(100)
-                await page.goto(url, wait_until="networkidle")
-                await page.wait_for_timeout(100)
-            else:
-                # The page shell runs no scripts, so once "load" has fired
-                # (every image included, remote ones too) nothing else will
-                # arrive; networkidle only added 500 ms of quiet per file.
-                await page.goto(url, wait_until="load")
-            await page.evaluate(_UNLINK_LOCAL_FILES_JS, notebook)
-            pdf = await page.pdf(print_background=True, prefer_css_page_size=not notebook)
-            web = [u for u in dict.fromkeys(failed) if u.startswith(("http://", "https://"))]
-            return Rendered(pdf, web)
-        finally:
-            await browser.close()
+async def _render_page(browser, url: str, notebook: bool) -> Rendered:
+    context = await browser.new_context()
+    try:
+        page = await context.new_page()
+        failed = []
+        page.on("requestfailed", lambda request: failed.append(request.url))
+        page.on("response", lambda response: _record_http_error(response, failed))
+        await page.emulate_media(media="print")
+        if notebook:
+            # As nbconvert's webpdf exporter does: settle 100 ms on each
+            # side of the load, and print at Playwright's default page
+            # size (Letter) with the template's @page margins.
+            await page.wait_for_timeout(100)
+            await page.goto(url, wait_until="networkidle")
+            await page.wait_for_timeout(100)
+        else:
+            # The page shell runs no scripts, so once "load" has fired
+            # (every image included, remote ones too) nothing else will
+            # arrive; networkidle only added 500 ms of quiet per file.
+            await page.goto(url, wait_until="load")
+        await page.evaluate(_UNLINK_LOCAL_FILES_JS, notebook)
+        pdf = await page.pdf(print_background=True, prefer_css_page_size=not notebook)
+        web = [u for u in dict.fromkeys(failed) if u.startswith(("http://", "https://"))]
+        return Rendered(pdf, web)
+    finally:
+        with contextlib.suppress(Exception):  # the browser may already be gone
+            await context.close()
 
 
 def _record_http_error(response, failed: list) -> None:
@@ -356,23 +354,130 @@ def _new_event_loop() -> asyncio.AbstractEventLoop:
     return asyncio.ProactorEventLoop() if os.name == "nt" else asyncio.new_event_loop()
 
 
-def _run_in_fresh_loop(coro):
-    loop = _new_event_loop()
+class _Renderer:
+    """A Playwright driver and Chromium browser living on one private thread.
+
+    Playwright objects belong to the event loop that created them, while
+    prints come from the GUI worker, the command line, or a thread already
+    running its own loop (Jupyter), so every print is handed to this thread's
+    loop. The driver and browser start with the first print.
+    """
+
+    def __init__(self):
+        self._loop = _new_event_loop()
+        self._thread = threading.Thread(target=self._loop.run_forever, name="pdf-renderer", daemon=True)
+        self._thread.start()
+        # Made on the calling thread but only awaited on the loop's; fine since
+        # Python 3.10, where a Lock binds to a loop at first use, not creation.
+        self._starting = asyncio.Lock()
+        self._playwright = None
+        self._browser = None
+
+    def print(self, url: str, notebook: bool) -> Rendered:
+        return asyncio.run_coroutine_threadsafe(self._print(url, notebook), self._loop).result()
+
+    def close(self) -> None:
+        try:
+            asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop).result()
+        finally:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+            self._thread.join()
+            self._loop.close()
+
+    async def _print(self, url: str, notebook: bool) -> Rendered:
+        try:
+            return await _render_page(await self._started_browser(), url, notebook)
+        except Exception as error:  # noqa: BLE001 - re-raised unless the browser died
+            if not self._lost_browser(error):
+                raise
+        # The browser or its driver died (crashed or killed) partway through a
+        # batch: start both again and give this file one more try.
+        await self._stop()
+        return await _render_page(await self._started_browser(), url, notebook)
+
+    def _lost_browser(self, error: Exception) -> bool:
+        from playwright._impl._errors import TargetClosedError  # not exported publicly
+
+        # A dead driver leaves is_connected() True and raises a plain
+        # Exception, so its message is the only sign.
+        return (
+            isinstance(error, TargetClosedError)
+            or "Connection closed" in str(error)
+            or (self._browser is not None and not self._browser.is_connected())
+        )
+
+    async def _started_browser(self):
+        async with self._starting:
+            if self._playwright is None:
+                from playwright.async_api import async_playwright
+
+                self._playwright = await async_playwright().start()
+            if self._browser is None:
+                self._browser = await self._playwright.chromium.launch(
+                    handle_sigint=False, handle_sigterm=False, handle_sighup=False
+                )
+            return self._browser
+
+    async def _stop(self) -> None:
+        browser, playwright = self._browser, self._playwright
+        self._browser = self._playwright = None
+        for stop in (browser and browser.close, playwright and playwright.stop):
+            if stop:
+                with contextlib.suppress(Exception):  # already dead: nothing to stop
+                    await asyncio.wait_for(stop(), 10)
+
+    async def _shutdown(self) -> None:
+        await self._stop()
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+_batch_lock = threading.Lock()
+_batch_depth = 0
+_batch_renderer: _Renderer | None = None
+
+
+@contextlib.contextmanager
+def batch():
+    """Print every file inside the block with one shared browser.
+
+    Starting the Playwright driver and Chromium costs about half a second per
+    print. Inside a batch they start with the first print and stop when the
+    outermost batch ends; outside one, each print starts and stops its own,
+    so nothing outlives the call. Enter the batch on the thread that prints.
+    """
+    global _batch_depth, _batch_renderer
+    with _batch_lock:
+        _batch_depth += 1
     try:
-        return loop.run_until_complete(coro)
+        yield
     finally:
-        loop.close()
+        with _batch_lock:
+            _batch_depth -= 1
+            renderer = _batch_renderer if _batch_depth == 0 else None
+            if renderer is not None:
+                _batch_renderer = None
+        if renderer is not None:
+            renderer.close()
 
 
 def _print_html(html: str, notebook: bool = False) -> Rendered:
+    global _batch_renderer
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         page_path = Path(tmp) / "page.html"
         page_path.write_bytes(html.encode("utf-8"))  # bytes: no newline translation
-        # A private thread with its own event loop, so this also works when the
-        # calling thread already runs one (inside Jupyter, for example). The
-        # with-block joins the thread; nothing outlives the call.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(_run_in_fresh_loop, _render_pdf(page_path.as_uri(), notebook)).result()
+        with _batch_lock:
+            shared = _batch_depth > 0
+            if shared and _batch_renderer is None:
+                _batch_renderer = _Renderer()
+            renderer = _batch_renderer if shared else _Renderer()
+        try:
+            return renderer.print(page_path.as_uri(), notebook)
+        finally:
+            if not shared:
+                renderer.close()
 
 
 def html_to_pdf(html: str) -> bytes:
