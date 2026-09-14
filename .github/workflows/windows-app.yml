@@ -88,9 +88,10 @@ jobs:
       # Lets anyone check the zip came from this workflow:
       #     gh attestation verify FileToPDF-windows.zip -R PrashantKumarChem/file-to-pdf
       # GitHub only offers attestations for public repositories on this plan,
-      # so the step is skipped while the repository is private.
+      # so the step runs only when the event says the repository is public
+      # (and is skipped, not failed, if it doesn't say).
       - name: Attest the zip's build provenance
-        if: ${{ !github.event.repository.private }}
+        if: github.event.repository.visibility == 'public'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: FileToPDF-windows.zip
