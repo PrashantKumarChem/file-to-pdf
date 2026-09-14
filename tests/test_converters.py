@@ -48,8 +48,8 @@ def test_dialog_patterns_are_simple_sorted_globs():
 @pytest.mark.parametrize(
     "raw",
     [
-        "Überprüfung µ\n".encode("utf-8"),
-        b"\xef\xbb\xbf" + "Überprüfung µ\n".encode("utf-8"),
+        "Überprüfung µ\n".encode(),
+        b"\xef\xbb\xbf" + "Überprüfung µ\n".encode(),
         "Überprüfung µ\n".encode("utf-16"),
         "Überprüfung µ\n".encode("utf-32"),
     ],
@@ -82,7 +82,7 @@ def test_read_text_rejects_binary(tmp_path):
 
 def test_looks_like_text_agrees_with_read_text(tmp_path):
     cases = {
-        "geometry.xyz": "3\nwater\nO 0 0 0.117\n".encode("utf-8"),
+        "geometry.xyz": b"3\nwater\nO 0 0 0.117\n",
         "notes.txt": "Ångström\n".encode("utf-16"),  # NUL bytes, but a BOM
         "spectrum.png": b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR",
         "blob.bin": bytes(range(256)),

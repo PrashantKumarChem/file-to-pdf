@@ -28,7 +28,7 @@ import re
 import tempfile
 import threading
 from pathlib import Path
-from typing import NamedTuple
+from typing import ClassVar, NamedTuple
 
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
@@ -148,7 +148,7 @@ class PaperStyle(Style):
     """
 
     background_color = "#ffffff"
-    styles = {
+    styles: ClassVar = {
         Name.Tag: "bold #9b2158",
         String: "#0f7d33",
         Keyword: "#7a3fc4",
@@ -386,7 +386,7 @@ class _Renderer:
     async def _print(self, url: str, notebook: bool) -> Rendered:
         try:
             return await _render_page(await self._started_browser(), url, notebook)
-        except Exception as error:  # noqa: BLE001 - re-raised unless the browser died
+        except Exception as error:  # re-raised unless the browser died
             if not self._lost_browser(error):
                 raise
         # The browser or its driver died (crashed or killed) partway through a

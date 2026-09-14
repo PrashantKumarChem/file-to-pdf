@@ -67,8 +67,8 @@ class App:
         # Jobs are (row_id, path, output_dir); results are (row_id, Result),
         # with None as the Result meaning "started". Keying by Treeview row id
         # keeps a file dropped twice as two independent rows.
-        self.work_queue: "queue.Queue[tuple[str, Path, Path]]" = queue.Queue()
-        self.result_queue: "queue.Queue[tuple[str, pipeline.Result | None]]" = queue.Queue()
+        self.work_queue: queue.Queue[tuple[str, Path, Path]] = queue.Queue()
+        self.result_queue: queue.Queue[tuple[str, pipeline.Result | None]] = queue.Queue()
         self._last_output_dir: Path | None = None
 
         self._build_ui()
@@ -268,7 +268,7 @@ class App:
         """
         try:
             parts = list(self.root.tk.splitlist(data))
-        except Exception:
+        except Exception:  # noqa: BLE001 - an unparseable payload gets the single-path fallback below
             parts = []
         good = [p for p in parts if p and Path(p).exists()]
         if good:
