@@ -1,11 +1,17 @@
 """Saving, naming, fallback and error handling, with the PDF engine stubbed out."""
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 import converters
 import pipeline
 
 FAKE_PDF = b"%PDF-1.7 fake"
+REPO = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -149,3 +155,21 @@ def test_log_keeps_one_previous_generation(isolated_pipeline, monkeypatch):
     old = log.with_name("log.old.txt")
     assert "x" * 100 in old.read_text(encoding="utf-8")
     assert log.read_text(encoding="utf-8").startswith("second")
+
+
+def test_log_folder_is_created_when_missing(isolated_pipeline, monkeypatch, tmp_path):
+    log = tmp_path / "LocalAppData" / "NotebookToPDF" / "conversion_log.txt"
+    monkeypatch.setattr(pipeline, "LOG_PATH", log)
+    pipeline._append_log("first entry")
+    assert log.read_text(encoding="utf-8").startswith("first entry")
+
+
+@pytest.mark.parametrize("frozen", [False, True])
+def test_packaged_app_logs_to_local_app_data(tmp_path, frozen):
+    # Module-level paths are fixed at import, so check them in a fresh process.
+    code = f"import sys; sys.frozen = {frozen}; import pipeline; print(pipeline.LOG_PATH)"
+    env = {**os.environ, "LOCALAPPDATA": str(tmp_path)}
+    out = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env,
+                         capture_output=True, text=True, check=True).stdout.strip()
+    expected = tmp_path / "NotebookToPDF" if frozen else REPO
+    assert Path(out) == expected / "conversion_log.txt"

@@ -12,6 +12,7 @@ Nothing here imports tkinter, so the pipeline runs and tests without a window.
 """
 
 import os
+import sys
 import time
 import traceback
 from datetime import datetime
@@ -20,7 +21,14 @@ from typing import NamedTuple
 
 import converters
 
-LOG_PATH = Path(__file__).parent / "conversion_log.txt"
+# The log sits next to the scripts when run from source. The packaged app may
+# be unpacked somewhere read-only (Program Files), so it logs to the user's
+# local application data instead.
+if getattr(sys, "frozen", False):
+    LOG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "NotebookToPDF"
+else:
+    LOG_DIR = Path(__file__).parent
+LOG_PATH = LOG_DIR / "conversion_log.txt"
 LOG_MAX_BYTES = 1_000_000
 # Default output: a plain folder directly under the user profile, which is
 # reliably writable. On this machine a whole set of locations are currently
@@ -177,6 +185,7 @@ def _save_pdf_bytes(
 def _append_log(text: str) -> None:
     # Keep one previous generation.
     try:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         if LOG_PATH.stat().st_size > LOG_MAX_BYTES:
             LOG_PATH.replace(LOG_PATH.with_name(f"{LOG_PATH.stem}.old{LOG_PATH.suffix}"))
     except OSError:
