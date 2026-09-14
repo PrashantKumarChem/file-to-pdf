@@ -1,0 +1,49 @@
+name: Accept new rendering
+
+# For a pull request whose visual comparison failed because the PDFs look
+# different on purpose. Look at the before, after and difference images in
+# that run's "visual-comparison" artifact first. Then run this from the
+# Actions tab (Accept new rendering, Run workflow) with the pull request's
+# number. It commits the fingerprints that run measured to the pull
+# request's branch (ci/accept_rendering.py). A commit made with the
+# workflow's token starts the pull request's checks waiting for approval, so
+# it approves them, and they run on the new commit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pull-request:
+        description: Number of the pull request whose new rendering to accept
+        required: true
+        type: number
+
+permissions: {}
+
+jobs:
+  accept:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # commit the fingerprints to the pull request's branch
+      actions: write # download the comparison's artifact; approve the new commit's check runs
+      pull-requests: read # find the pull request's branch and head commit
+    steps:
+      # Only the reviewed copy of this workflow and its script, on the
+      # default branch, may use these permissions.
+      - name: Refuse to run from any branch but the default one
+        if: github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          echo "::error::Run Accept new rendering from the $DEFAULT_BRANCH branch (the Use workflow from menu)."
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Accept the pull request's new rendering
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ inputs.pull-request }}
+        run: python3 ci/accept_rendering.py "$PULL_REQUEST"
