@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest a change or a new file type
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The PDF holds the file's content and nothing else, so requests to add headings, file names or extra sections to the output are out of scope.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The files you convert and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help

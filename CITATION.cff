@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+type: software
+title: "File to PDF"
+abstract: >-
+  A Windows desktop tool and command line that print Jupyter notebooks, JSON,
+  Markdown, code and text files to PDF, 1:1.
+authors:
+  - family-names: Kumar
+    given-names: Prashant
+repository-code: "https://github.com/PrashantKumarChem/file-to-pdf"
+license: MIT
+version: 0.1.0
+date-released: 2026-09-13
+keywords:
+  - pdf
+  - jupyter
+  - nbconvert
+  - json
+  - markdown
+  - windows

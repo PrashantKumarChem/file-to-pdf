@@ -1,0 +1,57 @@
+name: Bug report
+description: A file didn't convert, or its PDF isn't right
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The log records the full path of every converted file, so remove anything private before pasting from it. For security problems, use the private report form instead (see SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`topdf --version`, or the release you downloaded"
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options:
+        - Windows app (zip from Releases)
+        - From source
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 24H2"
+  - type: input
+    id: file-type
+    attributes:
+      label: File type
+      placeholder: ".ipynb, .json, .md, .py, ..."
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The status message, and what is wrong with the PDF if one was saved.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Steps, or attach a small file that shows the problem if you can share one.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log excerpt
+      description: From `%LOCALAPPDATA%\File to PDF\conversion_log.txt`.
+      render: text

@@ -4,6 +4,9 @@ A small Windows desktop tool that turns files into PDFs. Drop files onto the
 window, pick them with the Open dialog, or convert whole folders from the
 command line.
 
+Download the Windows app, which needs no Python install, from
+[Releases](https://github.com/PrashantKumarChem/file-to-pdf/releases/latest).
+
 - `.ipynb` notebooks are exported by nbconvert with the bundled
   `topdf-notebook` template, so long code lines, output tables and wide
   figures wrap or scale instead of being clipped at the page edge. The PDF is
@@ -103,8 +106,8 @@ GitHub Actions builds a standalone copy with PyInstaller
 (`packaging/topdf.spec`, workflow `.github/workflows/windows-app.yml`) and
 checks it with `packaging/smoke_test.py`. Pushing a `v*` tag attaches
 `FileToPDF-windows.zip` to a GitHub release; other runs keep the zip as a
-workflow artifact. The repository is private, so downloading either needs a
-GitHub sign-in with access to it.
+workflow artifact. Download the latest zip from
+[Releases](https://github.com/PrashantKumarChem/file-to-pdf/releases/latest).
 
 Unzip it to a short folder path and run the programs below. Chromium sits
 about 135 characters deep inside the app folder, and Windows won't start a
@@ -155,3 +158,25 @@ python -m pytest -m "not slow"   # skip Chromium and nbconvert rendering
 ```
 
 The GUI tests open a hidden window, so run them from a desktop session.
+
+## Contributing
+
+Bug reports and pull requests are welcome; see
+[CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately as
+described in [SECURITY.md](SECURITY.md).
+
+## How this was built
+
+File to PDF was built with Claude Code, Anthropic's coding assistant, with
+every change reviewed and tested by the maintainer.
+[AI_USAGE.md](AI_USAGE.md) describes how.
+
+## Citing
+
+If you use File to PDF in your work, the "Cite this repository" button on
+GitHub gives a citation from [CITATION.cff](CITATION.cff).
+
+## License
+
+[MIT](LICENSE). The Windows app bundles Python, Chromium and other
+open-source components, each under its own license.
