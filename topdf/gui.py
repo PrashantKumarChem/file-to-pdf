@@ -22,6 +22,7 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
+from typing import Any
 
 import customtkinter as ctk
 from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -43,6 +44,16 @@ class CTkDnD(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.TkdndVersion = TkinterDnD._require(self)
+
+
+def accept_file_drops(widget: Any, on_drop) -> None:
+    """Make widget a drop target for files from Explorer.
+
+    Importing tkinterdnd2 adds drop_target_register and dnd_bind to every
+    tkinter widget at run time, which type checkers can't see, hence Any.
+    """
+    widget.drop_target_register(DND_FILES)
+    widget.dnd_bind("<<Drop>>", on_drop)
 
 
 class App:
@@ -113,8 +124,7 @@ class App:
         for w in (drop, self.drop_label):
             w.configure(cursor="hand2")
             w.bind("<Button-1>", lambda e: self._browse_files())
-            w.drop_target_register(DND_FILES)
-            w.dnd_bind("<<Drop>>", self._on_drop)
+            accept_file_drops(w, self._on_drop)
         self._drop_frame = drop
 
         # --- options ---------------------------------------------------------
@@ -169,8 +179,7 @@ class App:
         sb = ctk.CTkScrollbar(tree_wrap, command=self.tree.yview)
         sb.grid(row=0, column=1, sticky="ns", pady=8, padx=(0, 8))
         self.tree.configure(yscrollcommand=sb.set)
-        self.tree.drop_target_register(DND_FILES)
-        self.tree.dnd_bind("<<Drop>>", self._on_drop)
+        accept_file_drops(self.tree, self._on_drop)
         self._style_tree()
 
         # --- bottom buttons --------------------------------------------------

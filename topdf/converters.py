@@ -488,9 +488,12 @@ def _print_html(html: str, notebook: bool = False) -> Rendered:
         page_path.write_bytes(html.encode("utf-8"))  # bytes: no newline translation
         with _batch_lock:
             shared = _batch_depth > 0
-            if shared and _batch_renderer is None:
-                _batch_renderer = _Renderer()
-            renderer = _batch_renderer if shared else _Renderer()
+            if not shared:
+                renderer = _Renderer()
+            else:
+                if _batch_renderer is None:
+                    _batch_renderer = _Renderer()
+                renderer = _batch_renderer
         try:
             return renderer.print(page_path.as_uri(), notebook)
         finally:

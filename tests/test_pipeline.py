@@ -30,6 +30,7 @@ def test_saves_into_output_dir(isolated_pipeline, stub_engine, tmp_path):
     result = pipeline.convert_any(src, isolated_pipeline["DEFAULT_OUTPUT_DIR"])
     assert result.ok
     assert result.saved_path == isolated_pipeline["DEFAULT_OUTPUT_DIR"] / "a.json.pdf"
+    assert result.saved_path is not None
     assert result.saved_path.read_bytes() == FAKE_PDF
     assert result.status == f"Done -> {result.saved_path}"
 
@@ -38,6 +39,7 @@ def test_notebook_pdf_is_named_after_the_notebook(isolated_pipeline, stub_engine
     out = isolated_pipeline["DEFAULT_OUTPUT_DIR"]
     notebook = pipeline.convert_any(make(tmp_path / "src", "analysis.ipynb"), out)
     data = pipeline.convert_any(make(tmp_path / "src", "analysis.json"), out)
+    assert notebook.saved_path is not None and data.saved_path is not None
     assert (notebook.saved_path.name, data.saved_path.name) == ("analysis.pdf", "analysis.json.pdf")
 
 
@@ -56,6 +58,7 @@ def test_same_named_files_from_different_folders_do_not_overwrite(isolated_pipel
     out = isolated_pipeline["DEFAULT_OUTPUT_DIR"]
     ra = pipeline.convert_any(a, out)
     rb = pipeline.convert_any(b, out)
+    assert ra.saved_path is not None and rb.saved_path is not None
     assert ra.saved_path.name == "analysis.json.pdf"
     assert rb.saved_path.name == "analysis.json (2).pdf"
     # Converting the second file again keeps using its own numbered PDF.
@@ -76,6 +79,7 @@ def test_web_resources_that_did_not_load_are_a_warning(isolated_pipeline, monkey
     monkeypatch.setattr(converters, "render", lambda path: converters.Rendered(FAKE_PDF, [url]))
     result = pipeline.convert_any(make(tmp_path / "src", "chart.ipynb"), isolated_pipeline["DEFAULT_OUTPUT_DIR"])
     assert result.ok
+    assert result.saved_path is not None
     assert result.saved_path.read_bytes() == FAKE_PDF
     assert result.status == (
         f"Warning: 1 web resource did not load; charts or math may be missing. Done -> {result.saved_path}"

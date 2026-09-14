@@ -208,7 +208,7 @@ def test_slow_remote_images_are_waited_for(tmp_path):
             self.end_headers()
             self.wfile.write(PNG_8X8)
 
-        def log_message(self, *args):
+        def log_message(self, format, *args):
             pass
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), SlowImage)
@@ -242,6 +242,7 @@ def test_notebook_converts_with_the_bundled_template(isolated_pipeline, tmp_path
     )
     result = pipeline.convert_any(src, isolated_pipeline["DEFAULT_OUTPUT_DIR"])
     assert result.ok, result.log
+    assert result.saved_path is not None
     assert result.saved_path.name == "sample.pdf"
     doc = pdf_doc(result.saved_path.read_bytes())
     assert doc.metadata["title"] == "sample"

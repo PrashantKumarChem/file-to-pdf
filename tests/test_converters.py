@@ -100,7 +100,9 @@ def printed_text(html: str, preformatted: bool = True) -> str:
     """
     body = html.split("<body>", 1)[1].rsplit("</body>", 1)[0]
     if preformatted:
-        body = re.search(r"<pre>(.*)</pre>", body, re.S).group(1).removeprefix("\n")
+        pre = re.search(r"<pre>(.*)</pre>", body, re.S)
+        assert pre is not None
+        body = pre.group(1).removeprefix("\n")
     return html_lib.unescape(re.sub(r"<[^>]+>", "", body))
 
 

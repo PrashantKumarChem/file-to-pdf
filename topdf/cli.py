@@ -16,7 +16,9 @@ import argparse
 import glob
 import os
 import sys
+from io import TextIOWrapper
 from pathlib import Path
+from typing import cast
 
 from topdf import __version__, converters, pipeline
 
@@ -85,8 +87,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args(argv)
     # Paths and statuses can hold any character; never let printing them fail.
-    sys.stdout.reconfigure(errors="replace")
-    sys.stderr.reconfigure(errors="replace")
+    # (typeshed declares them TextIO; at run time they are TextIOWrapper.)
+    cast(TextIOWrapper, sys.stdout).reconfigure(errors="replace")
+    cast(TextIOWrapper, sys.stderr).reconfigure(errors="replace")
 
     files, missing, skipped = collect(args.paths, args.recursive)
     for arg in missing:
