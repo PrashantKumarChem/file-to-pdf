@@ -412,20 +412,26 @@ class _Renderer:
 
                 self._playwright = await async_playwright().start()
             if self._browser is None:
-                chromium = self._playwright.chromium
-                # Windows won't start a program whose path is 260 characters or
-                # longer, and Chromium then fails with a bare "spawn ... ENOENT".
-                # The packaged app keeps Chromium about 135 characters deep, so
-                # an app folder with a long path runs into this.
-                if os.name == "nt" and len(chromium.executable_path) >= 260:
-                    raise RuntimeError(
-                        f"Chromium's path is {len(chromium.executable_path)} characters, past "
-                        "Windows' 260-character limit for starting programs; move the app "
-                        "to a folder with a shorter path"
+                try:
+                    self._browser = await self._playwright.chromium.launch(
+                        handle_sigint=False, handle_sigterm=False, handle_sighup=False
                     )
-                self._browser = await chromium.launch(
-                    handle_sigint=False, handle_sigterm=False, handle_sighup=False
-                )
+                except Exception as error:
+                    # Windows won't start a program whose path is 260 characters
+                    # or longer, and Chromium then fails with a bare "spawn ...
+                    # ENOENT". The packaged app keeps the headless shell 135
+                    # characters deep, so an app folder path of 125 characters or
+                    # more runs into this. The path comes from the error because
+                    # it names the program actually started; executable_path is
+                    # full Chromium's, 45 characters shorter.
+                    spawned = re.search(r"spawn (.+?) ENOENT", str(error))
+                    if os.name == "nt" and spawned and len(spawned.group(1)) >= 260:
+                        raise RuntimeError(
+                            f"Chromium's path is {len(spawned.group(1))} characters, past "
+                            "Windows' 260-character limit for starting programs; move the app "
+                            "to a folder with a shorter path"
+                        ) from error
+                    raise
             return self._browser
 
     async def _stop(self) -> None:

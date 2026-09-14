@@ -102,12 +102,35 @@ def test_browser_is_closed_when_printing_fails(monkeypatch):
     assert threading.active_count() == before
 
 
+def failing_launch(message):
+    from playwright._impl._errors import Error
+
+    async def launch(self, **kwargs):
+        raise Error(message)
+
+    return launch
+
+
 def test_a_chromium_path_too_long_for_windows_fails_with_an_explanation(monkeypatch):
     from playwright.async_api._generated import BrowserType
 
-    too_long = "C:\\" + "deep\\" * 60 + "chrome-headless-shell.exe"
-    monkeypatch.setattr(BrowserType, "executable_path", property(lambda self: too_long))
+    # The headless shell's path, not executable_path (full Chromium's, which
+    # is shorter): only the path in the error is the one Windows refused.
+    too_long = "C:\\" + "deep\\" * 50 + "chrome-headless-shell.exe"
+    monkeypatch.setattr(BrowserType, "executable_path", property(lambda self: "C:\\short\\chrome.exe"))
+    monkeypatch.setattr(BrowserType, "launch", failing_launch(
+        f"BrowserType.launch: Failed to launch: Error: spawn {too_long} ENOENT"))
     with pytest.raises(RuntimeError, match=f"{len(too_long)} characters"):
+        converters.html_to_pdf("<p>x</p>")
+
+
+def test_other_launch_failures_keep_their_own_message(monkeypatch):
+    from playwright._impl._errors import Error
+    from playwright.async_api._generated import BrowserType
+
+    monkeypatch.setattr(BrowserType, "launch", failing_launch(
+        "BrowserType.launch: Failed to launch: Error: spawn C:\\apps\\chrome-headless-shell.exe ENOENT"))
+    with pytest.raises(Error, match="ENOENT"):
         converters.html_to_pdf("<p>x</p>")
 
 
