@@ -125,9 +125,9 @@ conversions fail with a message saying so.
 
 It bundles Python, nbconvert's templates and Chromium's headless shell, so
 nothing else needs installing. `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt` in
-the folder give the licenses of the app and of everything it bundles. The programs are unsigned, so Windows
-SmartScreen asks before the first run. Notebooks still load MathJax and chart
-libraries from the web when printed.
+the folder give the licenses of the app and of everything it bundles. The
+programs are unsigned, so Windows SmartScreen asks before the first run.
+Notebooks still load MathJax and chart libraries from the web when printed.
 
 To build it locally (PowerShell, from the repository root):
 
