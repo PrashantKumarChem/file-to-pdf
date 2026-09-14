@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-fitz = pytest.importorskip("fitz")  # PyMuPDF, from requirements-dev.txt
+fitz = pytest.importorskip("fitz")  # PyMuPDF, from the dev dependency group
 pytest.importorskip("playwright")
 
 from topdf import converters, pipeline  # noqa: E402

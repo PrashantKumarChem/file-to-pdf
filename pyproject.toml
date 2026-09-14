@@ -1,0 +1,37 @@
+[project]
+name = "file-to-pdf"
+version = "0.2.0"
+description = "Convert Jupyter notebooks, JSON, Markdown, code and text files to PDF, 1:1."
+requires-python = ">=3.14"
+# What the app runs on. uv.lock pins these and everything they pull in, with
+# checksums; Dependabot proposes updates.
+dependencies = [
+    "customtkinter==6.0.0",
+    "tkinterdnd2==0.6.2",
+    "Pygments==2.20.0",
+    "Markdown==3.10.2",
+    "playwright==1.61.0",
+    "nbconvert==7.17.1",
+    "ipython==8.32.0",
+]
+
+[dependency-groups]
+# Installed by "uv sync" by default.
+dev = [
+    "pytest==9.0.3",
+    "PyMuPDF==1.27.2.3",
+    "psutil==7.0.0",
+]
+# Builds the Windows app: uv sync --group packaging
+packaging = [
+    "pyinstaller==6.22.3",
+    "pyinstaller-hooks-contrib==2026.7",
+]
+
+[tool.uv]
+# topdf runs from the repository folder (python -m topdf); it isn't built or
+# installed as a package.
+package = false
+# Always uv's own Python builds, never one that happens to be installed, so
+# every machine and CI runner gets the same Python and Tk.
+python-preference = "only-managed"

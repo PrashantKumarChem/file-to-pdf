@@ -30,7 +30,8 @@ Download the Windows app, which needs no Python install, from
 | `topdf/pipeline.py` | One file in, one PDF saved: output naming, retries, fallback folder, log |
 | `topdf/converters.py` | File type routing, text decoding, notebook export, HTML adapters and the HTML -> PDF engine |
 | `topdf/templates/topdf-notebook/` | nbconvert template for notebooks |
-| `File to PDF.vbs` | Starts the window from source with `pythonw.exe` and no console window |
+| `File to PDF.vbs` | Starts the window from source with `.venv\Scripts\pythonw.exe` and no console window |
+| `pyproject.toml`, `uv.lock`, `.python-version` | Dependencies, the exact version of every package, and the Python version, for uv |
 | `packaging/` | PyInstaller spec, entry scripts and smoke test for the Windows app |
 | `tests/` | pytest suite, including a hidden-window GUI test and Chromium/nbconvert rendering tests |
 
@@ -81,8 +82,8 @@ topdf "C:\Projects\results" --recursive --next-to-source
 topdf notes.md --out C:\PDFs
 ```
 
-`topdf` is `topdf.exe` in the Windows app; from source, run `python -m topdf`
-with the same arguments.
+`topdf` is `topdf.exe` in the Windows app; from source, run
+`uv run python -m topdf` with the same arguments.
 
 - **Inputs.** A file named directly always converts; unknown types print as
   text. A folder converts every file that prints: recognized types and
@@ -132,33 +133,36 @@ Notebooks still load MathJax and chart libraries from the web when printed.
 To build it locally (PowerShell, from the repository root):
 
 ```
-pip install -r requirements.txt -r packaging/requirements.txt
-$env:PLAYWRIGHT_BROWSERS_PATH = "0"; python -m playwright install --only-shell chromium
-python -m PyInstaller --noconfirm packaging/topdf.spec
-python packaging/smoke_test.py dist/FileToPDF
+uv sync --group packaging
+$env:PLAYWRIGHT_BROWSERS_PATH = "0"; uv run python -m playwright install --only-shell chromium
+uv run python -m PyInstaller --noconfirm packaging/topdf.spec
+uv run python packaging/smoke_test.py dist/FileToPDF
 ```
 
 ## Running from source
 
-1. Install Python 3.10 or later (the Windows app is built with 3.12), the
-   dependencies, and the Chromium build Playwright uses:
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
+   From the repository folder, install Python, the dependencies and the
+   Chromium build Playwright uses:
 
    ```
-   pip install -r requirements.txt
-   python -m playwright install chromium
+   uv sync
+   uv run python -m playwright install chromium
    ```
 
-2. Start the window with `python -m topdf.gui` from the repository folder, or
-   double-click `File to PDF.vbs`. The launcher starts
-   `%USERPROFILE%\Miniconda3\pythonw.exe`; if your Python environment lives
-   elsewhere, change that one line.
+   uv installs the Python version in `.python-version` (3.14) and the exact
+   package versions in `uv.lock` into `.venv`, the same ones the tests and the
+   Windows app use.
+
+2. Start the window with `uv run python -m topdf.gui` from the repository
+   folder, or double-click `File to PDF.vbs`, which starts it with
+   `.venv\Scripts\pythonw.exe`.
 
 ## Tests
 
 ```
-pip install -r requirements-dev.txt
-python -m pytest                 # everything, about 30 seconds
-python -m pytest -m "not slow"   # skip Chromium and nbconvert rendering
+uv run python -m pytest                 # everything, about 30 seconds
+uv run python -m pytest -m "not slow"   # skip Chromium and nbconvert rendering
 ```
 
 The GUI tests open a hidden window, so run them from a desktop session.
