@@ -152,7 +152,7 @@ class PaperStyle(Style):
     background_color = "#ffffff"
     styles: ClassVar = {
         Name.Tag: "bold #9b2158",
-        String: "#0f7d33",
+        String: "#2f9d53",  # probe: a lighter green for strings
         Keyword: "#7a3fc4",
         Comment: "italic #6e6e73",
     }
