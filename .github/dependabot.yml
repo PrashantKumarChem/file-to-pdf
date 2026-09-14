@@ -1,0 +1,22 @@
+# Monthly update pull requests, one per ecosystem. The pins are exact, so a
+# Python update can change how PDFs render: check the rendering tests and a
+# few real files before merging one.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directories:
+      - /
+      - /packaging
+    schedule:
+      interval: monthly
+    groups:
+      python:
+        patterns: ["*"]
