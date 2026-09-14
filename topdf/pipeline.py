@@ -121,9 +121,7 @@ def _write_pdf(dest: Path, data: bytes, source: Path) -> None:
     _source_of_pdf[_path_key(dest)] = _path_key(source)
 
 
-def _save_pdf_bytes(
-    data: bytes, stem: str, output_dir: Path, log_chunks: list, source: Path
-) -> Result:
+def _save_pdf_bytes(data: bytes, stem: str, output_dir: Path, log_chunks: list, source: Path) -> Result:
     """Write PDF bytes into output_dir, retrying, then falling back.
 
     Some folders intermittently refuse new-file creation (cloud-synced ones

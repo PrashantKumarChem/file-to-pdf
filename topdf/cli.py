@@ -58,9 +58,9 @@ def collect(args: list[str], recursive: bool = False) -> tuple[list[Path], list[
             found = path.rglob("*") if recursive else path.glob("*")
             for p in sorted(p for p in found if p.is_file() and not _hidden(p, path)):
                 (files if _prints(p) else skipped).append(p)
-        elif glob.has_magic(arg) and (matches := sorted(
-            Path(m) for m in glob.glob(arg, recursive=recursive) if Path(m).is_file()
-        )):
+        elif glob.has_magic(arg) and (
+            matches := sorted(Path(m) for m in glob.glob(arg, recursive=recursive) if Path(m).is_file())
+        ):
             files.extend(matches)
         else:
             missing.append(arg)
@@ -75,12 +75,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("paths", nargs="+", help="files, folders or wildcards")
     where = parser.add_mutually_exclusive_group()
-    where.add_argument("-o", "--out", type=Path, metavar="FOLDER",
-                       help=f"save the PDFs here (default: {pipeline.DEFAULT_OUTPUT_DIR})")
-    where.add_argument("--next-to-source", action="store_true",
-                       help="save each PDF next to the file it came from")
-    parser.add_argument("-r", "--recursive", action="store_true",
-                        help="also convert files in subfolders of the folders given")
+    where.add_argument(
+        "-o", "--out", type=Path, metavar="FOLDER", help=f"save the PDFs here (default: {pipeline.DEFAULT_OUTPUT_DIR})"
+    )
+    where.add_argument("--next-to-source", action="store_true", help="save each PDF next to the file it came from")
+    parser.add_argument(
+        "-r", "--recursive", action="store_true", help="also convert files in subfolders of the folders given"
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args(argv)
     # Paths and statuses can hold any character; never let printing them fail.

@@ -115,7 +115,8 @@ def test_drop_payload_with_spaces(app, tmp_path):
     missing = tmp_path / "missing.json"
     payload = f"{{{spaced.as_posix()}}} {plain.as_posix()} {missing.as_posix()}"
     assert [p.replace("\\", "/") for p in app._parse_drop(payload)] == [
-        spaced.as_posix(), plain.as_posix(),
+        spaced.as_posix(),
+        plain.as_posix(),
     ]
 
 
