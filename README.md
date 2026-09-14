@@ -121,7 +121,8 @@ conversions fail with a message saying so.
   use it from any terminal.
 
 It bundles Python, nbconvert's templates and Chromium's headless shell, so
-nothing else needs installing. The programs are unsigned, so Windows
+nothing else needs installing. `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt` in
+the folder give the licenses of the app and of everything it bundles. The programs are unsigned, so Windows
 SmartScreen asks before the first run. Notebooks still load MathJax and chart
 libraries from the web when printed.
 
@@ -179,4 +180,5 @@ GitHub gives a citation from [CITATION.cff](CITATION.cff).
 ## License
 
 [MIT](LICENSE). The Windows app bundles Python, Chromium and other
-open-source components, each under its own license.
+open-source components, each under its own license; its
+`THIRD-PARTY-NOTICES.txt` lists them.
