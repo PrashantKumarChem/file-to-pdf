@@ -101,6 +101,10 @@ use. `.github/dependabot.yml` configures it:
 - **Security updates** open as soon as GitHub raises a Dependabot alert,
   grouped per ecosystem. The schedule and the 14-day wait don't apply to them.
 
+Dependabot titles its Python updates `deps: ...`, so merging one makes a patch
+release, and its GitHub Actions updates `ci: ...`, which don't make a release
+(see [Titles and commit messages](#titles-and-commit-messages)).
+
 Review an update like any other pull request: its checks show whether the
 tests, the PDFs ("visual") or the Windows app ("app") are affected. A major
 update may need code changes, which is why it comes on its own.
@@ -166,6 +170,41 @@ uv run python -m pytest packaging/e2e --app dist\FileToPDF
   build the Windows app and test it end to end.
 - Pull requests are merged with a merge commit, so each commit should stand
   on its own with a message that says what it does.
+
+### Titles and commit messages
+
+Releases are made from pull request titles. A pull request's merge commit
+carries its title, and
+[release-please](https://github.com/googleapis/release-please) reads those
+titles on `main` to choose the next version and write the changelog. So the
+title is a [conventional commit](https://www.conventionalcommits.org/en/v1.0.0/):
+a type, an optional scope in parentheses, a colon, a space and what changes.
+
+```
+fix: keep spaces in file names
+feat(gui): drop files on the window
+```
+
+| Type | For | Version after merging |
+|---|---|---|
+| `feat` | something new people can do | minor (0.2.0 to 0.3.0) |
+| `fix` | a bug fix | patch (0.2.0 to 0.2.1) |
+| `perf` | the same result, faster | patch |
+| `deps` | a dependency update (Dependabot's Python updates) | patch |
+| `revert` | undoing an earlier change | patch |
+| `docs`, `style`, `refactor`, `test`, `build`, `ci`, `chore` | changes that don't reach the app | no release on its own |
+
+Add `!` after the type or scope (`feat!: need Python 3.14`) for a change that
+breaks how people use the tool. While the version is below 1.0.0, that raises
+the minor version, as `feat` does.
+
+The commits on the branch keep plain sentences that say what they do ("Check
+pull request titles"), without a type. They land on `main` with the merge, and
+release-please would read a conventional one as a second change and list it
+twice. The "pr-title" check fails when the title isn't a conventional commit,
+or when a commit on the branch starts a paragraph with a type that makes a
+release, and runs again when you edit the title. Dependabot's commits are
+exempt, because Dependabot gives each commit its pull request's title.
 
 If you used AI tools, say so in the pull request description, as described in
 [AI_USAGE.md](AI_USAGE.md).

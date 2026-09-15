@@ -8,6 +8,7 @@
 
 ## Checklist
 
+- [ ] The title is a conventional commit, such as `fix: keep spaces in file names`, and the branch's commit messages are plain sentences (CONTRIBUTING.md, "Titles and commit messages")
 - [ ] `uv run python -m pytest` passes
 - [ ] `uv run ruff check .`, `uv run ruff format --check .` and `uv run pyright` pass
 - [ ] The README is updated if behavior it describes changed

@@ -27,6 +27,11 @@ updates:
       interval: quarterly
     cooldown:
       default-days: 14 # GitHub Actions supports only default-days
+    # Titles "ci: bump ...": the workflows aren't part of the app, so merging
+    # an update doesn't make a release (CONTRIBUTING.md, "Titles and commit
+    # messages").
+    commit-message:
+      prefix: ci
     groups:
       actions:
         applies-to: version-updates
@@ -49,6 +54,11 @@ updates:
       interval: quarterly
     cooldown:
       default-days: 14
+    # Titles "deps: bump ...": merging an update makes a patch release, so a
+    # security update reaches users without other changes. This covers every
+    # dependency group, the test tools included.
+    commit-message:
+      prefix: deps
     groups:
       python:
         applies-to: version-updates
