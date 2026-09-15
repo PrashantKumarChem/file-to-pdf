@@ -3,7 +3,8 @@ name: Supply chain
 # Checks what the app and its builds are made from, on Windows:
 # - uv.lock is in step with pyproject.toml;
 # - no package in uv.lock (every group) has a known vulnerability (pip-audit);
-# - the workflows avoid known-unsafe patterns (zizmor);
+# - the workflows avoid known-unsafe patterns, and Dependabot waits at least
+#   14 days before proposing a release (zizmor, set in .github/zizmor.yml);
 # - .github/dependabot.yml matches Dependabot's schema (check-jsonschema).
 # On pull requests and pushes to main, weekly because new advisories appear
 # without any change here, and on demand. The tools are locked in the
@@ -52,14 +53,17 @@ jobs:
         if: ${{ !cancelled() && steps.export.outcome == 'success' }}
         run: uv run --no-sync pip-audit --requirement "$env:RUNNER_TEMP\locked-requirements.txt" --require-hashes --disable-pip --progress-spinner off
 
-      # The token lets zizmor look up the actions the workflows use (pinned
-      # commits, known-vulnerable versions); it only reads. dependabot.yml
-      # joins the scan when Dependabot gets its cooldown (plan, Phase 3).
-      - name: Audit the workflows with zizmor
+      # All of .github: the workflows and dependabot.yml, whose cooldown must
+      # be at least the 14 days in .github/zizmor.yml. The settings file is
+      # named, not left to discovery, which looks for a .git folder and so
+      # misses it in a git worktree. The token lets zizmor look up the
+      # actions the workflows use (pinned commits, known-vulnerable
+      # versions); it only reads.
+      - name: Audit the workflows and dependabot.yml with zizmor
         if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uv run --no-sync zizmor --format github .github/workflows
+        run: uv run --no-sync zizmor --format github --config .github/zizmor.yml .github
 
       # Dependabot reads its configuration only from the default branch, so a
       # mistake would otherwise show only after merging. The schema is the
