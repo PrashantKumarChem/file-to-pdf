@@ -1,21 +1,44 @@
-# Monthly update pull requests, one per ecosystem. The pins are exact, so a
-# Python update can change how PDFs render: check the rendering tests and a
-# few real files before merging one.
+# Version updates once a quarter, only for releases at least 14 days old, in
+# grouped pull requests; security updates open as soon as an alert appears.
+# The pins are exact, so a Python update can change how PDFs render: check the
+# rendering tests and a few real files before merging one.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: monthly
+      interval: quarterly
+    cooldown:
+      default-days: 14
     groups:
       actions:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+      actions-major:
+        applies-to: version-updates
+        update-types: [major]
+        patterns: ["*"]
+      actions-security:
+        applies-to: security-updates
         patterns: ["*"]
 
   # pyproject.toml and uv.lock
   - package-ecosystem: uv
     directory: /
     schedule:
-      interval: monthly
+      interval: quarterly
+    cooldown:
+      default-days: 14
     groups:
       python:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+      python-major:
+        applies-to: version-updates
+        update-types: [major]
+        patterns: ["*"]
+      python-security:
+        applies-to: security-updates
         patterns: ["*"]
