@@ -30,6 +30,7 @@ def test_saves_into_output_dir(isolated_pipeline, stub_engine, tmp_path):
     result = pipeline.convert_any(src, isolated_pipeline["DEFAULT_OUTPUT_DIR"])
     assert result.ok
     assert result.saved_path == isolated_pipeline["DEFAULT_OUTPUT_DIR"] / "a.json.pdf"
+    assert result.saved_path is not None
     assert result.saved_path.read_bytes() == FAKE_PDF
     assert result.status == f"Done -> {result.saved_path}"
 
@@ -38,6 +39,7 @@ def test_notebook_pdf_is_named_after_the_notebook(isolated_pipeline, stub_engine
     out = isolated_pipeline["DEFAULT_OUTPUT_DIR"]
     notebook = pipeline.convert_any(make(tmp_path / "src", "analysis.ipynb"), out)
     data = pipeline.convert_any(make(tmp_path / "src", "analysis.json"), out)
+    assert notebook.saved_path is not None and data.saved_path is not None
     assert (notebook.saved_path.name, data.saved_path.name) == ("analysis.pdf", "analysis.json.pdf")
 
 
@@ -50,23 +52,20 @@ def test_reconverting_a_file_replaces_its_own_pdf(isolated_pipeline, stub_engine
     assert second.status.startswith("Done, replaced existing PDF -> ")
 
 
-def test_same_named_files_from_different_folders_do_not_overwrite(
-    isolated_pipeline, stub_engine, tmp_path
-):
+def test_same_named_files_from_different_folders_do_not_overwrite(isolated_pipeline, stub_engine, tmp_path):
     a = make(tmp_path / "one", "analysis.json")
     b = make(tmp_path / "two", "analysis.json")
     out = isolated_pipeline["DEFAULT_OUTPUT_DIR"]
     ra = pipeline.convert_any(a, out)
     rb = pipeline.convert_any(b, out)
+    assert ra.saved_path is not None and rb.saved_path is not None
     assert ra.saved_path.name == "analysis.json.pdf"
     assert rb.saved_path.name == "analysis.json (2).pdf"
     # Converting the second file again keeps using its own numbered PDF.
     assert pipeline.convert_any(b, out).saved_path == rb.saved_path
 
 
-def test_pdf_left_by_an_earlier_session_is_replaced_and_reported(
-    isolated_pipeline, stub_engine, tmp_path
-):
+def test_pdf_left_by_an_earlier_session_is_replaced_and_reported(isolated_pipeline, stub_engine, tmp_path):
     out = isolated_pipeline["DEFAULT_OUTPUT_DIR"]
     out.mkdir()
     (out / "a.json.pdf").write_bytes(b"old")
@@ -80,17 +79,15 @@ def test_web_resources_that_did_not_load_are_a_warning(isolated_pipeline, monkey
     monkeypatch.setattr(converters, "render", lambda path: converters.Rendered(FAKE_PDF, [url]))
     result = pipeline.convert_any(make(tmp_path / "src", "chart.ipynb"), isolated_pipeline["DEFAULT_OUTPUT_DIR"])
     assert result.ok
+    assert result.saved_path is not None
     assert result.saved_path.read_bytes() == FAKE_PDF
     assert result.status == (
-        "Warning: 1 web resource did not load; charts or math may be missing. "
-        f"Done -> {result.saved_path}"
+        f"Warning: 1 web resource did not load; charts or math may be missing. Done -> {result.saved_path}"
     )
     assert url in isolated_pipeline["LOG_PATH"].read_text(encoding="utf-8")
 
 
-def test_falls_back_when_output_dir_refuses_writes(
-    isolated_pipeline, stub_engine, monkeypatch, tmp_path
-):
+def test_falls_back_when_output_dir_refuses_writes(isolated_pipeline, stub_engine, monkeypatch, tmp_path):
     blocked = tmp_path / "blocked"
     real_write = pipeline._write_pdf
 
@@ -106,9 +103,7 @@ def test_falls_back_when_output_dir_refuses_writes(
     assert result.status.startswith("Saved to fallback")
 
 
-def test_fails_cleanly_when_fallback_also_refuses(
-    isolated_pipeline, stub_engine, monkeypatch, tmp_path
-):
+def test_fails_cleanly_when_fallback_also_refuses(isolated_pipeline, stub_engine, monkeypatch, tmp_path):
     def refuse(dest, data, source):
         raise PermissionError("refused")
 
@@ -167,6 +162,7 @@ def test_log_lives_in_local_app_data(tmp_path):
     # Module-level paths are fixed at import, so check them in a fresh process.
     code = "from topdf import pipeline; print(pipeline.LOG_PATH)"
     env = {**os.environ, "LOCALAPPDATA": str(tmp_path)}
-    out = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env,
-                         capture_output=True, text=True, check=True).stdout.strip()
+    out = subprocess.run(
+        [sys.executable, "-c", code], cwd=REPO, env=env, capture_output=True, text=True, check=True
+    ).stdout.strip()
     assert Path(out) == tmp_path / "File to PDF" / "conversion_log.txt"

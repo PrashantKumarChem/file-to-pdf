@@ -26,11 +26,17 @@ def pdf_doc(data: bytes):
 
 
 def write_notebook(path, cells):
-    path.write_text(json.dumps({
-        "cells": cells,
-        "metadata": {"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"}},
-        "nbformat": 4, "nbformat_minor": 5,
-    }), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "cells": cells,
+                "metadata": {"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"}},
+                "nbformat": 4,
+                "nbformat_minor": 5,
+            }
+        ),
+        encoding="utf-8",
+    )
     return path
 
 
@@ -118,8 +124,9 @@ def test_a_chromium_path_too_long_for_windows_fails_with_an_explanation(monkeypa
     # is shorter): only the path in the error is the one Windows refused.
     too_long = "C:\\" + "deep\\" * 50 + "chrome-headless-shell.exe"
     monkeypatch.setattr(BrowserType, "executable_path", property(lambda self: "C:\\short\\chrome.exe"))
-    monkeypatch.setattr(BrowserType, "launch", failing_launch(
-        f"BrowserType.launch: Failed to launch: Error: spawn {too_long} ENOENT"))
+    monkeypatch.setattr(
+        BrowserType, "launch", failing_launch(f"BrowserType.launch: Failed to launch: Error: spawn {too_long} ENOENT")
+    )
     with pytest.raises(RuntimeError, match=f"{len(too_long)} characters"):
         converters.html_to_pdf("<p>x</p>")
 
@@ -128,8 +135,11 @@ def test_other_launch_failures_keep_their_own_message(monkeypatch):
     from playwright._impl._errors import Error
     from playwright.async_api._generated import BrowserType
 
-    monkeypatch.setattr(BrowserType, "launch", failing_launch(
-        "BrowserType.launch: Failed to launch: Error: spawn C:\\apps\\chrome-headless-shell.exe ENOENT"))
+    monkeypatch.setattr(
+        BrowserType,
+        "launch",
+        failing_launch("BrowserType.launch: Failed to launch: Error: spawn C:\\apps\\chrome-headless-shell.exe ENOENT"),
+    )
     with pytest.raises(Error, match="ENOENT"):
         converters.html_to_pdf("<p>x</p>")
 
@@ -151,8 +161,7 @@ def test_local_folder_paths_stay_out_of_the_pdf(tmp_path):
     md = folder / "notes.md"
     md.write_text(
         "# Notes\n\n![dot](dot.png)\n\n[sibling](other.md), [absolute](file:///C:/Windows/win.ini),"
-        " [web](https://example.com) and [jump](#target)\n\n" + "filler\n\n" * 150
-        + '<h2 id="target">Target</h2>\n',
+        " [web](https://example.com) and [jump](#target)\n\n" + "filler\n\n" * 150 + '<h2 id="target">Target</h2>\n',
         encoding="utf-8",
     )
     data = converters.file_to_pdf_bytes(md)
@@ -174,9 +183,7 @@ def test_crlf_text_lays_out_like_lf_text(tmp_path):
     lf, crlf = tmp_path / "lf.txt", tmp_path / "crlf.txt"
     lf.write_bytes("\n".join(lines).encode())
     crlf.write_bytes("\r\n".join(lines).encode())
-    assert len(pdf_doc(converters.file_to_pdf_bytes(crlf))) == len(
-        pdf_doc(converters.file_to_pdf_bytes(lf))
-    )
+    assert len(pdf_doc(converters.file_to_pdf_bytes(crlf))) == len(pdf_doc(converters.file_to_pdf_bytes(lf)))
 
 
 def test_failed_web_resources_are_reported(tmp_path):
@@ -201,7 +208,7 @@ def test_slow_remote_images_are_waited_for(tmp_path):
             self.end_headers()
             self.wfile.write(PNG_8X8)
 
-        def log_message(self, *args):
+        def log_message(self, format, *args):
             pass
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), SlowImage)
@@ -220,13 +227,22 @@ def test_slow_remote_images_are_waited_for(tmp_path):
 
 def test_notebook_converts_with_the_bundled_template(isolated_pipeline, tmp_path):
     long_line = "value = '" + "wrap me " * 40 + "'"
-    src = write_notebook(tmp_path / "sample.ipynb", [{
-        "id": "c1", "cell_type": "code", "execution_count": 1, "metadata": {},
-        "source": [long_line + "\n", "print('done')"],
-        "outputs": [{"name": "stdout", "output_type": "stream", "text": ["done\n"]}],
-    }])
+    src = write_notebook(
+        tmp_path / "sample.ipynb",
+        [
+            {
+                "id": "c1",
+                "cell_type": "code",
+                "execution_count": 1,
+                "metadata": {},
+                "source": [long_line + "\n", "print('done')"],
+                "outputs": [{"name": "stdout", "output_type": "stream", "text": ["done\n"]}],
+            }
+        ],
+    )
     result = pipeline.convert_any(src, isolated_pipeline["DEFAULT_OUTPUT_DIR"])
     assert result.ok, result.log
+    assert result.saved_path is not None
     assert result.saved_path.name == "sample.pdf"
     doc = pdf_doc(result.saved_path.read_bytes())
     assert doc.metadata["title"] == "sample"
@@ -240,10 +256,17 @@ def test_notebook_links_to_local_files_keep_their_look_but_not_their_path(tmp_pa
     folder = tmp_path / "Private Folder Name"
     folder.mkdir()
     (folder / "data.csv").write_text("a,b\n1,2\n", encoding="utf-8")
-    src = write_notebook(folder / "links.ipynb", [{
-        "id": "m1", "cell_type": "markdown", "metadata": {},
-        "source": "See [sibling](data.csv) and [web](https://example.com).",
-    }])
+    src = write_notebook(
+        folder / "links.ipynb",
+        [
+            {
+                "id": "m1",
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": "See [sibling](data.csv) and [web](https://example.com).",
+            }
+        ],
+    )
     data = converters.file_to_pdf_bytes(src)
     for fragment in (b"Private Folder Name", b"Private%20Folder%20Name", tmp_path.name.encode(), b"file:"):
         assert fragment not in data

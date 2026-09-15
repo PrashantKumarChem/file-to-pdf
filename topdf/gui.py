@@ -22,13 +22,14 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
+from typing import Any
 
 import customtkinter as ctk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
 from topdf import APP_NAME, converters, pipeline
 
-ctk.set_appearance_mode("system")   # follows Windows light/dark
+ctk.set_appearance_mode("system")  # follows Windows light/dark
 ctk.set_default_color_theme("blue")
 
 
@@ -43,6 +44,16 @@ class CTkDnD(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.TkdndVersion = TkinterDnD._require(self)
+
+
+def accept_file_drops(widget: Any, on_drop) -> None:
+    """Make widget a drop target for files from Explorer.
+
+    Importing tkinterdnd2 adds drop_target_register and dnd_bind to every
+    tkinter widget at run time, which type checkers can't see, hence Any.
+    """
+    widget.drop_target_register(DND_FILES)
+    widget.dnd_bind("<<Drop>>", on_drop)
 
 
 class App:
@@ -67,8 +78,8 @@ class App:
         # Jobs are (row_id, path, output_dir); results are (row_id, Result),
         # with None as the Result meaning "started". Keying by Treeview row id
         # keeps a file dropped twice as two independent rows.
-        self.work_queue: "queue.Queue[tuple[str, Path, Path]]" = queue.Queue()
-        self.result_queue: "queue.Queue[tuple[str, pipeline.Result | None]]" = queue.Queue()
+        self.work_queue: queue.Queue[tuple[str, Path, Path]] = queue.Queue()
+        self.result_queue: queue.Queue[tuple[str, pipeline.Result | None]] = queue.Queue()
         self._last_output_dir: Path | None = None
 
         self._build_ui()
@@ -86,11 +97,14 @@ class App:
         header.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 4))
         header.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
-            header, text="File  →  PDF",
+            header,
+            text="File  →  PDF",
             font=ctk.CTkFont(size=22, weight="bold"),
         ).grid(row=0, column=0, sticky="w")
         ctk.CTkOptionMenu(
-            header, width=110, values=["System", "Light", "Dark"],
+            header,
+            width=110,
+            values=["System", "Light", "Dark"],
             command=self._change_appearance,
         ).grid(row=0, column=1, sticky="e")
 
@@ -102,8 +116,7 @@ class App:
         drop.grid_rowconfigure(0, weight=1)
         self.drop_label = ctk.CTkLabel(
             drop,
-            text="Drop files here, or click to select\n"
-                 ".ipynb   .json   .md   .py / code   .txt / .log",
+            text="Drop files here, or click to select\n.ipynb   .json   .md   .py / code   .txt / .log",
             font=ctk.CTkFont(size=14),
             justify="center",
         )
@@ -111,8 +124,7 @@ class App:
         for w in (drop, self.drop_label):
             w.configure(cursor="hand2")
             w.bind("<Button-1>", lambda e: self._browse_files())
-            w.drop_target_register(DND_FILES)
-            w.dnd_bind("<<Drop>>", self._on_drop)
+            accept_file_drops(w, self._on_drop)
         self._drop_frame = drop
 
         # --- options ---------------------------------------------------------
@@ -120,22 +132,32 @@ class App:
         opts.grid(row=2, column=0, sticky="ew", padx=16, pady=4)
         opts.grid_columnconfigure(3, weight=1)
         ctk.CTkRadioButton(
-            opts, text=f"Save to  {pipeline.DEFAULT_OUTPUT_DIR}   (recommended)",
-            variable=self.output_mode, value="local",
+            opts,
+            text=f"Save to  {pipeline.DEFAULT_OUTPUT_DIR}   (recommended)",
+            variable=self.output_mode,
+            value="local",
             command=self._update_output_label,
         ).grid(row=0, column=0, columnspan=4, sticky="w", padx=12, pady=(12, 4))
         ctk.CTkRadioButton(
-            opts, text="Save next to source", variable=self.output_mode,
-            value="same", command=self._update_output_label,
+            opts,
+            text="Save next to source",
+            variable=self.output_mode,
+            value="same",
+            command=self._update_output_label,
         ).grid(row=1, column=0, sticky="w", padx=12, pady=4)
         ctk.CTkRadioButton(
-            opts, text="Save to:", variable=self.output_mode,
-            value="custom", command=self._choose_output_dir,
+            opts,
+            text="Save to:",
+            variable=self.output_mode,
+            value="custom",
+            command=self._choose_output_dir,
         ).grid(row=1, column=1, sticky="w", padx=(12, 4), pady=4)
         self.output_label = ctk.CTkLabel(opts, text="", text_color=("gray40", "gray70"))
         self.output_label.grid(row=1, column=2, columnspan=2, sticky="w", pady=4)
         ctk.CTkCheckBox(
-            opts, text="Open folder when done", variable=self.auto_open,
+            opts,
+            text="Open folder when done",
+            variable=self.auto_open,
         ).grid(row=2, column=0, columnspan=4, sticky="w", padx=12, pady=(4, 12))
 
         # --- queue list (ttk.Treeview, themed to match) ----------------------
@@ -144,7 +166,9 @@ class App:
         tree_wrap.grid_columnconfigure(0, weight=1)
         tree_wrap.grid_rowconfigure(0, weight=1)
         self.tree = ttk.Treeview(
-            tree_wrap, columns=("file", "status"), show="headings",
+            tree_wrap,
+            columns=("file", "status"),
+            show="headings",
             style="Conv.Treeview",
         )
         self.tree.heading("file", text="File")
@@ -155,8 +179,7 @@ class App:
         sb = ctk.CTkScrollbar(tree_wrap, command=self.tree.yview)
         sb.grid(row=0, column=1, sticky="ns", pady=8, padx=(0, 8))
         self.tree.configure(yscrollcommand=sb.set)
-        self.tree.drop_target_register(DND_FILES)
-        self.tree.dnd_bind("<<Drop>>", self._on_drop)
+        accept_file_drops(self.tree, self._on_drop)
         self._style_tree()
 
         # --- bottom buttons --------------------------------------------------
@@ -171,12 +194,17 @@ class App:
         # text in dark mode.
         def secondary(text, cmd, width=110):
             return ctk.CTkButton(
-                bottom, text=text, width=width, command=cmd,
-                fg_color="transparent", border_width=1,
+                bottom,
+                text=text,
+                width=width,
+                command=cmd,
+                fg_color="transparent",
+                border_width=1,
                 text_color=("gray10", "gray90"),
                 border_color=("gray60", "gray45"),
                 hover_color=("gray85", "gray25"),
             )
+
         secondary("Clear list", self._clear_list, 90).pack(side="left", padx=6)
         secondary("Open output folder", self._open_last_output).pack(side="left")
         secondary("Copy error", self._copy_selected_error, 90).pack(side="left", padx=6)
@@ -196,16 +224,25 @@ class App:
         style = ttk.Style()
         style.theme_use("default")
         style.configure(
-            "Conv.Treeview", background=bg, foreground=fg, fieldbackground=bg,
-            borderwidth=0, rowheight=34, font=("Segoe UI", 12),
+            "Conv.Treeview",
+            background=bg,
+            foreground=fg,
+            fieldbackground=bg,
+            borderwidth=0,
+            rowheight=34,
+            font=("Segoe UI", 12),
         )
         style.map(
             "Conv.Treeview",
-            background=[("selected", sel)], foreground=[("selected", "#ffffff")],
+            background=[("selected", sel)],
+            foreground=[("selected", "#ffffff")],
         )
         style.configure(
-            "Conv.Treeview.Heading", background=head_bg, foreground=head_fg,
-            borderwidth=0, font=("Segoe UI", 12, "bold"),
+            "Conv.Treeview.Heading",
+            background=head_bg,
+            foreground=head_fg,
+            borderwidth=0,
+            font=("Segoe UI", 12, "bold"),
         )
         style.map("Conv.Treeview.Heading", background=[("active", head_bg)])
 
@@ -268,7 +305,7 @@ class App:
         """
         try:
             parts = list(self.root.tk.splitlist(data))
-        except Exception:
+        except Exception:  # noqa: BLE001 - an unparseable payload gets the single-path fallback below
             parts = []
         good = [p for p in parts if p and Path(p).exists()]
         if good:
@@ -347,9 +384,7 @@ class App:
         selection = self.tree.selection()
         if not selection:
             return
-        message = self.full_message_by_row.get(
-            selection[0], "(no log captured for this row yet)"
-        )
+        message = self.full_message_by_row.get(selection[0], "(no log captured for this row yet)")
         self.root.clipboard_clear()
         self.root.clipboard_append(message)
 

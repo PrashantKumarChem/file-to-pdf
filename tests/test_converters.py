@@ -48,8 +48,8 @@ def test_dialog_patterns_are_simple_sorted_globs():
 @pytest.mark.parametrize(
     "raw",
     [
-        "Überprüfung µ\n".encode("utf-8"),
-        b"\xef\xbb\xbf" + "Überprüfung µ\n".encode("utf-8"),
+        "Überprüfung µ\n".encode(),
+        b"\xef\xbb\xbf" + "Überprüfung µ\n".encode(),
         "Überprüfung µ\n".encode("utf-16"),
         "Überprüfung µ\n".encode("utf-32"),
     ],
@@ -82,7 +82,7 @@ def test_read_text_rejects_binary(tmp_path):
 
 def test_looks_like_text_agrees_with_read_text(tmp_path):
     cases = {
-        "geometry.xyz": "3\nwater\nO 0 0 0.117\n".encode("utf-8"),
+        "geometry.xyz": b"3\nwater\nO 0 0 0.117\n",
         "notes.txt": "Ångström\n".encode("utf-16"),  # NUL bytes, but a BOM
         "spectrum.png": b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR",
         "blob.bin": bytes(range(256)),
@@ -100,7 +100,9 @@ def printed_text(html: str, preformatted: bool = True) -> str:
     """
     body = html.split("<body>", 1)[1].rsplit("</body>", 1)[0]
     if preformatted:
-        body = re.search(r"<pre>(.*)</pre>", body, re.S).group(1).removeprefix("\n")
+        pre = re.search(r"<pre>(.*)</pre>", body, re.S)
+        assert pre is not None
+        body = pre.group(1).removeprefix("\n")
     return html_lib.unescape(re.sub(r"<[^>]+>", "", body))
 
 
@@ -166,11 +168,26 @@ def test_code_highlighting_handles_crlf_sources(tmp_path):
 
 def test_notebook_html_comes_from_the_bundled_template(tmp_path):
     nb = tmp_path / "analysis.ipynb"
-    nb.write_text(json.dumps({
-        "cells": [{"id": "c1", "cell_type": "code", "execution_count": 1, "metadata": {},
-                   "source": "x = 1", "outputs": []}],
-        "metadata": {}, "nbformat": 4, "nbformat_minor": 5,
-    }), encoding="utf-8")
+    nb.write_text(
+        json.dumps(
+            {
+                "cells": [
+                    {
+                        "id": "c1",
+                        "cell_type": "code",
+                        "execution_count": 1,
+                        "metadata": {},
+                        "source": "x = 1",
+                        "outputs": [],
+                    }
+                ],
+                "metadata": {},
+                "nbformat": 4,
+                "nbformat_minor": 5,
+            }
+        ),
+        encoding="utf-8",
+    )
     html = converters.file_to_html(nb)
     assert "<title>analysis</title>" in html  # nbconvert's page, named after the notebook
     assert "white-space: pre-wrap !important" in html  # the bundled template, not the stock lab one

@@ -20,13 +20,24 @@ from pathlib import Path
 
 NOTEBOOK = {
     "cells": [
-        {"id": "m1", "cell_type": "markdown", "metadata": {},
-         "source": "# Kinetics\n\nThe rate is $k = A e^{-E_a/RT}$."},
-        {"id": "c1", "cell_type": "code", "execution_count": 1, "metadata": {},
-         "source": "print('done')",
-         "outputs": [{"name": "stdout", "output_type": "stream", "text": "done\n"}]},
+        {
+            "id": "m1",
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": "# Kinetics\n\nThe rate is $k = A e^{-E_a/RT}$.",
+        },
+        {
+            "id": "c1",
+            "cell_type": "code",
+            "execution_count": 1,
+            "metadata": {},
+            "source": "print('done')",
+            "outputs": [{"name": "stdout", "output_type": "stream", "text": "done\n"}],
+        },
     ],
-    "metadata": {}, "nbformat": 4, "nbformat_minor": 5,
+    "metadata": {},
+    "nbformat": 4,
+    "nbformat_minor": 5,
 }
 INPUTS = {
     "data.json": '{\n  "name": "water",\n  "mass": 18.015\n}\n',
@@ -57,7 +68,10 @@ def check_command_line(app: Path, tmp: Path) -> list[str]:
         (sources / name).write_text(text, encoding="utf-8")
     run = subprocess.run(
         [str(app / "topdf.exe"), str(sources), "--out", str(out)],
-        capture_output=True, text=True, env=clean_env(tmp), timeout=600,
+        capture_output=True,
+        text=True,
+        env=clean_env(tmp),
+        timeout=600,
     )
     print(run.stdout)
     print(run.stderr, file=sys.stderr)

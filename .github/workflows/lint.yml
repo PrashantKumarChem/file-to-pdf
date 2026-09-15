@@ -1,0 +1,45 @@
+name: Lint
+
+# Style and type checks on Windows, with the tool versions locked in uv.lock
+# and their settings in pyproject.toml: Ruff's lint rules, Ruff's formatting
+# and Pyright. Each check runs even when an earlier one failed, so one run
+# reports all three.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      # pyright looks up its latest version online and warns when it isn't
+      # this one; the version is uv.lock's decision.
+      PYRIGHT_PYTHON_IGNORE_WARNINGS: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+
+      - name: Install Python and the locked dependencies
+        id: sync
+        run: uv sync --locked
+
+      - name: Ruff lint
+        run: uv run --no-sync ruff check --output-format=github .
+
+      - name: Ruff format
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+        run: uv run --no-sync ruff format --check --diff .
+
+      - name: Pyright
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+        run: uv run --no-sync pyright
