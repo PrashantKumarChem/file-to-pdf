@@ -225,8 +225,16 @@ Release workflow (`.github/workflows/release.yml`):
 2. Merging the Release PR tags its merge commit `v` and the version, and marks
    the pull request `autorelease: tagged`.
 3. The tag starts the Windows app workflow. It checks the tag against every
-   version file (`ci/versions.py --tag`), builds the app, tests the zip end to
-   end and publishes the release.
+   version file (`ci/versions.py --tag`), builds the app once, and tests the
+   zip end to end on Windows Server 2022 and 2025.
+4. When every leg passes, it uploads the zip, its bill of materials and
+   `SHA256SUMS` to a draft release, with that version's section of
+   `CHANGELOG.md` as the notes (`ci/release_notes.py`). It downloads the
+   draft's files and checks them against the build's checksums, and only
+   then publishes the release. A version of numbers and dots only, such as
+   0.3.0, becomes Latest. Any other, such as 0.0.0.dev1 or 1.0.0rc1, is
+   published as a prerelease and is never marked Latest. Re-running a failed
+   run replaces the files of the draft it left.
 
 Don't edit the Release PR by hand: release-please rewrites its branch whenever
 `main` changes. To choose a version yourself, 1.0.0 for example, add
