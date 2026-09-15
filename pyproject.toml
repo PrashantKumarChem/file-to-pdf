@@ -27,6 +27,8 @@ dev = [
     # The nodejs extra brings Node.js as a locked wheel instead of fetching it
     # when Pyright first runs.
     "pyright[nodejs]==1.1.414",
+    # Drives the packaged app's window in packaging/e2e.
+    "pywinauto==0.6.9",
 ]
 # Builds the Windows app: uv sync --group packaging
 packaging = [

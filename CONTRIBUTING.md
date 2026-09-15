@@ -111,15 +111,33 @@ uv run python ci/visual.py fingerprint out out/fingerprints.json
 uv run python ci/visual.py compare tests/visual/fingerprints.json out/fingerprints.json
 ```
 
+## The Windows app, end to end
+
+Pull requests that change `topdf/`, `pyproject.toml`, `uv.lock`,
+`.python-version`, `packaging/` or the app workflow build the Windows app, zip
+it, unzip the zip into a fresh folder and test that folder
+(`packaging/e2e`): `topdf.exe` on every file type in the corpus, without
+network, from a long folder path, into a folder that refuses writes, with
+non-English and same-named files, and the window clicked through by script.
+The "app" check passes when all of that passes, or when nothing the app is
+built from changed.
+
+The window test moves the real mouse, and the no-network test adds Windows
+Firewall rules, so run the suite on a machine nobody is using, elevated:
+
+```
+uv run python -m pytest packaging/e2e --app dist\FileToPDF
+```
+
 ## Pull requests
 
 - Branch from `main` and keep each pull request to one change.
 - Describe what changes for someone using the tool, and how you tested it.
 - Update the README when behavior it describes changes.
 - Every pull request runs the tests on Windows with the Python in
-  `.python-version` and the packages in `uv.lock`. Changes to `topdf/`,
-  `pyproject.toml`, `uv.lock`, `.python-version` or `packaging/` also build and
-  smoke-test the Windows app.
+  `.python-version` and the packages in `uv.lock`, and the style, type,
+  supply-chain and visual checks. Changes to what the app is built from also
+  build the Windows app and test it end to end.
 - Pull requests are merged with a merge commit, so each commit should stand
   on its own with a message that says what it does.
 
