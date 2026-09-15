@@ -1,0 +1,8 @@
+# Settings for zizmor. The supply-chain workflow passes this file with
+# --config when it runs zizmor on .github.
+rules:
+  # Dependabot's cooldown must be at least the 14 days dependabot.yml sets.
+  # zizmor's own minimum is 7 days, which would let a shorter cooldown pass.
+  dependabot-cooldown:
+    config:
+      days: 14

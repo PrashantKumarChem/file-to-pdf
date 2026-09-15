@@ -76,15 +76,15 @@ they pull in, in `uv.lock`. To add or change one, edit `pyproject.toml` (or run
 
 Every pull request, and a weekly run, also checks the supply chain: that
 `uv.lock` matches `pyproject.toml`, that no locked package has a known
-vulnerability, that the workflows avoid unsafe patterns, and that
-`.github/dependabot.yml` matches Dependabot's schema. To run the same checks
-locally:
+vulnerability, that the workflows avoid unsafe patterns and Dependabot waits
+at least 14 days before proposing a release, and that `.github/dependabot.yml`
+matches Dependabot's schema. To run the same checks locally:
 
 ```
 uv lock --check
 uv export --frozen --all-groups --format requirements.txt -o locked-requirements.txt
 uv run --group audit pip-audit -r locked-requirements.txt --require-hashes --disable-pip
-uv run --group audit zizmor .github/workflows
+uv run --group audit zizmor --config .github/zizmor.yml .github
 uv run --group audit check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml
 ```
 
