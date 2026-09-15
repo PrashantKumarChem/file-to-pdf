@@ -9,7 +9,7 @@ updates:
     schedule:
       interval: quarterly
     cooldown:
-      default-days: 14
+      default-days: 10
     groups:
       actions:
         applies-to: version-updates
@@ -29,7 +29,7 @@ updates:
     schedule:
       interval: quarterly
     cooldown:
-      default-days: 14
+      default-days: 10
     groups:
       python:
         applies-to: version-updates
