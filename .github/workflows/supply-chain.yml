@@ -3,7 +3,8 @@ name: Supply chain
 # Checks what the app and its builds are made from, on Windows:
 # - uv.lock is in step with pyproject.toml;
 # - no package in uv.lock (every group) has a known vulnerability (pip-audit);
-# - the workflows avoid known-unsafe patterns (zizmor).
+# - the workflows avoid known-unsafe patterns (zizmor);
+# - .github/dependabot.yml matches Dependabot's schema (check-jsonschema).
 # On pull requests and pushes to main, weekly because new advisories appear
 # without any change here, and on demand. The tools are locked in the
 # "audit" dependency group.
@@ -59,3 +60,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: uv run --no-sync zizmor --format github .github/workflows
+
+      # Dependabot reads its configuration only from the default branch, so a
+      # mistake would otherwise show only after merging. The schema is the
+      # copy of SchemaStore's bundled in check-jsonschema: no download, and it
+      # rejects unknown keys and values such as an unsupported interval.
+      - name: Check dependabot.yml against its schema
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: uv run --no-sync check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml
