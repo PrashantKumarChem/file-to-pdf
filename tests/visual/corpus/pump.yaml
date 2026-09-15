@@ -1,0 +1,11 @@
+# Pump program (synthetic)
+pumps:
+  - name: acid
+    rate_ml_min: 0.25
+    syringe: {volume_ml: 10, diameter_mm: 14.5}
+  - name: base
+    rate_ml_min: 0.50
+    enabled: true
+schedule:
+  start: "2026-01-01T09:00:00"
+  steps: [prime, run, flush]

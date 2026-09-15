@@ -86,6 +86,31 @@ uv run --group audit pip-audit -r locked-requirements.txt --require-hashes --dis
 uv run --group audit zizmor .github/workflows
 ```
 
+## How the PDFs look
+
+Every pull request renders the synthetic files in `tests/visual/corpus` on
+Windows and compares the PDFs with `tests/visual/fingerprints.json`: page
+count, pixels of each page, text line positions, links and title. Nothing in
+the corpus comes from real work; add files there only if you wrote them for
+this purpose.
+
+When a PDF differs, the "visual" check fails. Its summary says which pages
+differ and whether the pull request or something else (the runner, PyMuPDF)
+caused it, and the run's `visual-comparison` artifact holds before, after and
+difference images of those pages. If the new look is intended, a maintainer
+runs **Actions → Accept new rendering → Run workflow** with the pull request's
+number. That commits the fingerprints the run measured, and the checks run
+again on that commit.
+
+The fingerprints are made on the Windows runner. A local rendering can differ,
+so don't commit fingerprints made on your own machine. To look locally:
+
+```
+uv run python ci/visual.py render tests/visual/corpus out
+uv run python ci/visual.py fingerprint out out/fingerprints.json
+uv run python ci/visual.py compare tests/visual/fingerprints.json out/fingerprints.json
+```
+
 ## Pull requests
 
 - Branch from `main` and keep each pull request to one change.
