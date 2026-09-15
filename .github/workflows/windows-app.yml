@@ -3,8 +3,10 @@ name: Windows app
 # Builds the standalone Windows app (packaging/topdf.spec) once, checks the
 # build with packaging/smoke_test.py, and tests the zip itself end to end
 # (packaging/e2e): unzipped into a fresh folder, topdf.exe on every file type
-# and the window driven by script. The build job also writes the zip's
-# software bill of materials (ci/sbom.py) and SHA256SUMS (ci/checksums.py),
+# and the window driven by script, on Windows Server 2022 and 2025 for tags
+# and manual runs, and on Server 2025 for pull requests. The build job also
+# writes the zip's software bill of materials (ci/sbom.py) and SHA256SUMS
+# (ci/checksums.py),
 # and every later job checks what it downloaded against those checksums and
 # the build job's own record of the zip's hash, so nothing is rebuilt or
 # swapped after testing. Pull requests build it when they touch the app's
@@ -58,7 +60,9 @@ jobs:
   build:
     needs: changes
     if: needs.changes.outputs.app == 'true'
-    runs-on: windows-latest
+    # A named image rather than windows-latest, so the build doesn't move to a
+    # new Windows unannounced; the e2e job tests the zip on every image.
+    runs-on: windows-2025
     timeout-minutes: 30
     outputs:
       zip_sha256: ${{ steps.hash.outputs.zip_sha256 }}
@@ -135,14 +139,27 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The one zip, tested on each Windows Server runner for tags and manual runs
+  # (a release and its rehearsal), and on the newest for pull requests, which
+  # keeps their Windows minutes down.
   e2e:
     needs: build
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["windows-2025"]' || '["windows-2022", "windows-2025"]') }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Show the Windows version
+        shell: pwsh
+        run: |
+          $os = Get-CimInstance Win32_OperatingSystem
+          "$($os.Caption), version $($os.Version), runner image $env:ImageOS $env:ImageVersion"
 
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
 
@@ -178,7 +195,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
-          name: e2e-failure
+          name: e2e-failure-${{ matrix.os }}
           path: ${{ runner.temp }}/e2e
           retention-days: 14
 
