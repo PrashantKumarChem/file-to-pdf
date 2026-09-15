@@ -10,8 +10,10 @@ authors:
     given-names: Prashant
 repository-code: "https://github.com/PrashantKumarChem/file-to-pdf"
 license: MIT
-version: 0.2.0
-date-released: 2026-09-14
+# release-please's Release PR updates the two lines marked x-release-please;
+# the date is the day it last updated the pull request.
+version: 0.2.0 # x-release-please-version
+date-released: 2026-09-14 # x-release-please-date
 keywords:
   - pdf
   - jupyter
