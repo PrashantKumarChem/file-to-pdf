@@ -206,6 +206,39 @@ or when a commit on the branch starts a paragraph with a type that makes a
 release, and runs again when you edit the title. Dependabot's commits are
 exempt, because Dependabot gives each commit its pull request's title.
 
+## Releases
+
+Releases are made from `main` by
+[release-please](https://github.com/googleapis/release-please) and the
+Release workflow (`.github/workflows/release.yml`):
+
+1. After each merge, release-please keeps one pull request, the Release PR
+   (its branch is `release-please--branches--main`), up to date. It holds the
+   next version, the changelog entry written from the titles merged since the
+   last release, and that version in `.release-please-manifest.json`,
+   `pyproject.toml`, `topdf/__init__.py`, `CITATION.cff` and `uv.lock`. It
+   exists only once something that makes a release has merged.
+2. Merging the Release PR tags its merge commit `v` and the version, and marks
+   the pull request `autorelease: tagged`.
+3. The tag starts the Windows app workflow. It checks the tag against every
+   version file (`ci/versions.py --tag`), builds the app, tests the zip end to
+   end and publishes the release.
+
+Don't edit the Release PR by hand: release-please rewrites its branch whenever
+`main` changes. To choose a version yourself, 1.0.0 for example, add
+`"release-as": "1.0.0"` under `packages` → `"."` in
+`release-please-config.json` in a pull request, and remove it again after
+that release. `uv run python ci/versions.py` checks that the version files
+agree; the tests run it on every pull request.
+
+The Release workflow acts with a token from the project's release GitHub App,
+because a tag or pull request made with the workflow's own token starts no
+checks, or starts them waiting for approval. The app's client ID
+(`RELEASE_APP_CLIENT_ID`, a variable) and private key
+(`RELEASE_APP_PRIVATE_KEY`, a secret) belong to the `release` environment,
+which only `main` may use. If tagging fails, re-run the Release workflow's run
+for that merge commit.
+
 If you used AI tools, say so in the pull request description, as described in
 [AI_USAGE.md](AI_USAGE.md).
 

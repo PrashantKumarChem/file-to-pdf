@@ -1,0 +1,141 @@
+name: Release
+
+# Releases come from release-please's Release PR (CONTRIBUTING.md,
+# "Releases"). On every push to main:
+# 1. "tag": when the pushed commit is the merge of the Release PR, check that
+#    the version files agree, tag that commit v<version>, and move the pull
+#    request's label from "autorelease: pending" to "autorelease: tagged".
+#    The tag starts the Windows app workflow, which builds, tests and
+#    publishes the release. release-please's own release step is off
+#    (skip-github-release), so the tagging is done here; without the label
+#    change, release-please would refuse to open the next Release PR.
+# 2. "release-pr": release-please opens or updates the Release PR with the
+#    next version, the changelog and the version in every file
+#    (release-please-config.json).
+# Both jobs act with a token from the release GitHub App, not the workflow's
+# own token: a tag pushed with GITHUB_TOKEN starts no workflow run, and a
+# pull request it opens or updates starts its checks waiting for approval.
+# The app's key is a secret of the "release" environment, which only main may
+# use, so a workflow run on any other branch can't read it.
+# To retry a failed tag, re-run this workflow's run for the merge commit.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# One at a time, in order, so a Release PR update never races the tagging of
+# the merge before it.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read # check out the version files
+      pull-requests: read # find the pull request this commit merged
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Find the Release PR this commit merged
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          number=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '
+            [.[] | select(.merged_at != null
+                          and .base.ref == "main"
+                          and (.head.ref | startswith("release-please--branches--main"))
+                          and ([.labels[].name] | index("autorelease: pending")))]
+            | .[0].number // empty')
+          if [ -z "$number" ]; then
+            echo "$SHA isn't the merge of a pending Release PR: nothing to tag."
+          else
+            echo "$SHA merged Release PR #$number."
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      # The script needs only Python's standard library.
+      - name: Check that the version files agree
+        id: version
+        if: steps.find.outputs.number != ''
+        run: |
+          python3 ci/versions.py
+          echo "version=$(python3 -c 'import json; print(json.load(open(".release-please-manifest.json"))["."])')" >> "$GITHUB_OUTPUT"
+
+      - name: Get a token from the release app
+        id: app
+        if: steps.find.outputs.number != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write # create the tag
+          permission-issues: write # change the pull request's labels
+
+      # Safe to re-run: an existing tag on this commit is kept, one on another
+      # commit fails the step.
+      - name: Tag the release and mark the Release PR tagged
+        if: steps.find.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          NUMBER: ${{ steps.find.outputs.number }}
+          TAG: v${{ steps.version.outputs.version }}
+        run: |
+          existing=$(gh api "repos/$REPO/git/matching-refs/tags/$TAG" --jq ".[] | select(.ref == \"refs/tags/$TAG\") | .object.sha")
+          if [ -z "$existing" ]; then
+            gh api "repos/$REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA" > /dev/null
+            echo "Tagged $SHA as $TAG."
+          elif [ "$existing" = "$SHA" ]; then
+            echo "$TAG already points at $SHA."
+          else
+            echo "::error::$TAG already exists on $existing, not on $SHA."
+            exit 1
+          fi
+          # Replaces the whole label set, so no label name goes into a URL.
+          gh api "repos/$REPO/issues/$NUMBER/labels" \
+            --jq '{labels: ([.[].name | select(. != "autorelease: pending")] + ["autorelease: tagged"] | unique)}' \
+            | gh api -X PUT "repos/$REPO/issues/$NUMBER/labels" --input - > /dev/null
+          labels=$(gh api "repos/$REPO/issues/$NUMBER/labels" --jq '[.[].name] | join(", ")')
+          if [[ ", $labels, " != *", autorelease: tagged, "* || ", $labels, " == *", autorelease: pending, "* ]]; then
+            echo "::error::Release PR #$NUMBER has the labels \"$labels\"; expected autorelease: tagged and not pending."
+            exit 1
+          fi
+          echo "Tagged $SHA as $TAG; Release PR #$NUMBER is marked tagged." >> "$GITHUB_STEP_SUMMARY"
+
+  release-pr:
+    needs: tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions: {}
+    steps:
+      - name: Get a token from the release app
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write # the Release PR's branch and commit
+          permission-pull-requests: write # open and update the Release PR
+          permission-issues: write # create and apply the autorelease labels
+
+      - name: Open or update the Release PR
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: true
