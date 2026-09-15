@@ -1,0 +1,17 @@
+name: Probe release environment
+
+# Throwaway, never merged: a pull request run asks for the release
+# environment, which only main may use, so this job must be refused.
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: release
+    steps:
+      - run: echo "This step must never run from a pull request."
