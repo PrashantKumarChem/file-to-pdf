@@ -88,6 +88,30 @@ uv run --group audit zizmor --config .github/zizmor.yml .github
 uv run --group audit check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml
 ```
 
+### Dependency updates
+
+Dependabot proposes updates for the Python packages in `pyproject.toml` and
+`uv.lock` (every dependency group) and for the GitHub Actions the workflows
+use. `.github/dependabot.yml` configures it:
+
+- **Version updates** come once a quarter, on the first day of January, April,
+  July and October, and only for releases that have been out for at least 14
+  days. For each ecosystem, minor and patch updates arrive in one pull request
+  and major updates in another.
+- **Security updates** open as soon as GitHub raises a Dependabot alert,
+  grouped per ecosystem. The schedule and the 14-day wait don't apply to them.
+
+Review an update like any other pull request: its checks show whether the
+tests, the PDFs ("visual") or the Windows app ("app") are affected. A major
+update may need code changes, which is why it comes on its own.
+
+Dependabot reads `.github/dependabot.yml` only from `main`, so pull requests
+check it first: against Dependabot's schema, and for a cooldown of at least
+the 14 days in `.github/zizmor.yml` (change both files together). After a
+change to it merges, check that GitHub accepted it under **Insights →
+Dependency graph → Dependabot**: **Recent update jobs** next to each
+ecosystem's file lists the runs, and **view logs** shows any error.
+
 ## How the PDFs look
 
 Every pull request renders the synthetic files in `tests/visual/corpus` on
