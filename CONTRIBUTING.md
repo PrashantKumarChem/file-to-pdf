@@ -144,13 +144,17 @@ uv run python ci/visual.py compare tests/visual/fingerprints.json out/fingerprin
 ## The Windows app, end to end
 
 Pull requests that change `topdf/`, `pyproject.toml`, `uv.lock`,
-`.python-version`, `packaging/` or the app workflow build the Windows app, zip
-it, unzip the zip into a fresh folder and test that folder
-(`packaging/e2e`): `topdf.exe` on every file type in the corpus, without
-network, from a long folder path, into a folder that refuses writes, with
-non-English and same-named files, and the window clicked through by script.
-The "app" check passes when all of that passes, or when nothing the app is
-built from changed.
+`.python-version`, `packaging/`, `ci/sbom.py`, `ci/checksums.py` or the app
+workflow build the Windows app, zip it, unzip the zip into a fresh folder and
+test that folder (`packaging/e2e`): `topdf.exe` on every file type in the
+corpus, without network, from a long folder path, into a folder that refuses
+writes, with non-English and same-named files, and the window clicked through
+by script. The "app" check passes when all of that passes, or when nothing the
+app is built from changed.
+
+The app is built once, on Windows Server 2025. Pull requests test it there;
+release tags and manual runs of the workflow test the same zip on Windows
+Server 2022 and 2025, and every leg must pass.
 
 The window test moves the real mouse, and the no-network test adds Windows
 Firewall rules, so run the suite on a machine nobody is using, elevated:
