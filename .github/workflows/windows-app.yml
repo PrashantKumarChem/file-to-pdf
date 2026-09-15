@@ -13,7 +13,9 @@ name: Windows app
 # code, its dependencies, its packaging or this workflow; the "app" job always
 # reports, so it can be a required check. Pushing a v* tag also releases the
 # zip, its bill of materials and SHA256SUMS once every end-to-end leg passes:
-# as a draft first, whose files are checked again, then published. Actions are pinned to commits (Dependabot updates
+# as a draft first, whose files are checked again, then published, and then
+# checked once more from the release itself. If that last check fails, the
+# Latest marker goes back to the release before it and an issue is opened. Actions are pinned to commits (Dependabot updates
 # them).
 
 on:
@@ -243,6 +245,9 @@ jobs:
       contents: write # create, upload to and publish the release
       id-token: write # sign the attestation (public repository only)
       attestations: write # store the attestation (public repository only)
+    outputs:
+      previous_latest: ${{ steps.previous.outputs.tag }}
+      prerelease: ${{ steps.notes.outputs.prerelease }}
     env:
       REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
@@ -331,6 +336,18 @@ jobs:
         with:
           subject-path: ${{ runner.temp }}/draft/FileToPDF-windows.zip
 
+      # Which release is Latest now, before this one can take the marker: if
+      # the checks after publishing fail, the rollback job puts it back.
+      - name: Record which release is Latest now
+        id: previous
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          tag=$(gh api "repos/$REPO/releases/latest" --jq '.tag_name' 2>/dev/null || true)
+          echo "Latest before publishing: ${tag:-none}."
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       # Publishing a draft marks it Latest unless told otherwise, so both
       # cases say which they want, and the result is read back.
       - name: Publish the release
@@ -360,3 +377,101 @@ jobs:
             exit 1
           fi
           echo "Published $TAG ($state). Latest: $latest." >> "$GITHUB_STEP_SUMMARY"
+
+  # The published release as anyone else would get it: downloaded from the
+  # release, checked against the build's checksums, unzipped on a clean runner
+  # and smoke-tested. This is the last thing that can catch a release that
+  # went out wrong, and the rollback job acts on its failure.
+  verify:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, release]
+    runs-on: windows-2025
+    timeout-minutes: 30
+    permissions:
+      contents: read # download the release's files
+      attestations: read # check the zip's attestation (public repository only)
+    env:
+      REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      ZIP_SHA256: ${{ needs.build.outputs.zip_sha256 }}
+    steps:
+      # ci/checksums.py and packaging/smoke_test.py, which need only the
+      # standard library, so the runner's own Python runs them.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$env:TAG" --repo "$env:REPO" --dir "$env:RUNNER_TEMP\published"
+
+      - name: Check the release's files against the build's checksums
+        working-directory: ${{ runner.temp }}/published
+        run: python "$env:GITHUB_WORKSPACE\ci\checksums.py" check SHA256SUMS "FileToPDF-windows.zip=$env:ZIP_SHA256"
+
+      # Only public repositories have attestations on this plan, so this is
+      # skipped, not failed, until the repository is public.
+      - name: Verify the zip's attestation
+        if: github.event.repository.visibility == 'public'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh attestation verify "$env:RUNNER_TEMP\published\FileToPDF-windows.zip" --repo "$env:REPO"
+
+      - name: Unzip the published app and smoke-test it
+        run: |
+          Expand-Archive -Path "$env:RUNNER_TEMP\published\FileToPDF-windows.zip" -DestinationPath "$env:RUNNER_TEMP\check"
+          python packaging/smoke_test.py "$env:RUNNER_TEMP\check\FileToPDF"
+
+  # Only when the checks after publishing fail. The release itself stays, but
+  # it mustn't be what people get: the Latest marker goes back to the release
+  # it was on before, and an issue says what to look at. Deleting a release is
+  # the owner's call, so this never deletes anything.
+  rollback:
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.verify.result == 'failure' }}
+    needs: [release, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # move the Latest marker back
+      issues: write # open the issue
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      PREVIOUS: ${{ needs.release.outputs.previous_latest }}
+      PRERELEASE: ${{ needs.release.outputs.prerelease }}
+      RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Mark the release before this one Latest again
+        run: |
+          set -euo pipefail
+          if [ "$PRERELEASE" = "true" ]; then
+            echo "$TAG is a prerelease and never took the Latest marker; nothing to move."
+            exit 0
+          fi
+          if [ -z "$PREVIOUS" ] || [ "$PREVIOUS" = "$TAG" ]; then
+            echo "::warning::No earlier release to mark Latest (the release job recorded '${PREVIOUS:-none}')."
+            exit 0
+          fi
+          gh release edit "$PREVIOUS" --repo "$REPO" --latest
+          latest=$(gh api "repos/$REPO/releases/latest" --jq '.tag_name')
+          echo "Latest is $latest again."
+          if [ "$latest" != "$PREVIOUS" ]; then
+            echo "::error::Latest is $latest, not $PREVIOUS."
+            exit 1
+          fi
+
+      - name: Open an issue about the release
+        run: |
+          set -euo pipefail
+          {
+            echo "The checks after publishing \`$TAG\` failed: $RUN"
+            echo
+            echo "The release is published. Latest points at \`${PREVIOUS:-none}\` again, unless \`$TAG\` is a prerelease, which never held it."
+            echo
+            echo "What to do:"
+            echo "- read the failed \`verify\` job, which downloads the release, checks its checksums and smoke-tests the app;"
+            echo "- fix the problem and release again, or delete \`$TAG\` yourself."
+          } > body.md
+          gh issue create --repo "$REPO" --title "Release $TAG failed its checks after publishing" --body-file body.md

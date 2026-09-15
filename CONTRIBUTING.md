@@ -235,6 +235,13 @@ Release workflow (`.github/workflows/release.yml`):
    0.3.0, becomes Latest. Any other, such as 0.0.0.dev1 or 1.0.0rc1, is
    published as a prerelease and is never marked Latest. Re-running a failed
    run replaces the files of the draft it left.
+5. After publishing, the release is checked as anyone else would get it: the
+   files are downloaded from the release, checked against the build's
+   checksums, unzipped on a clean runner and smoke-tested, and the zip's
+   attestation is verified once the repository is public. If that fails, the
+   Latest marker goes back to the release it was on before, and an issue is
+   opened. Nothing is deleted: removing a release or a tag is the owner's
+   call.
 
 Don't edit the Release PR by hand: release-please rewrites its branch whenever
 `main` changes. To choose a version yourself, 1.0.0 for example, add
