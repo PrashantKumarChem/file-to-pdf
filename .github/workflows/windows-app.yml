@@ -1,13 +1,18 @@
 name: Windows app
 
-# Builds the standalone Windows app (packaging/topdf.spec), checks the build
-# with packaging/smoke_test.py, and tests the zip itself end to end
+# Builds the standalone Windows app (packaging/topdf.spec) once, checks the
+# build with packaging/smoke_test.py, and tests the zip itself end to end
 # (packaging/e2e): unzipped into a fresh folder, topdf.exe on every file type
-# and the window driven by script. Pull requests build it when they touch
-# the app's code, its dependencies, its packaging or this workflow; the "app"
-# job always reports, so it can be a required check. Pushing a v* tag also
-# attaches the zip to a GitHub release, once the end-to-end tests pass.
-# Actions are pinned to commits (Dependabot updates them).
+# and the window driven by script. The build job also writes the zip's
+# software bill of materials (ci/sbom.py) and SHA256SUMS (ci/checksums.py),
+# and every later job checks what it downloaded against those checksums and
+# the build job's own record of the zip's hash, so nothing is rebuilt or
+# swapped after testing. Pull requests build it when they touch the app's
+# code, its dependencies, its packaging or this workflow; the "app" job always
+# reports, so it can be a required check. Pushing a v* tag also attaches the
+# zip, its bill of materials and SHA256SUMS to a GitHub release, once the
+# end-to-end tests pass. Actions are pinned to commits (Dependabot updates
+# them).
 
 on:
   pull_request:
@@ -43,7 +48,7 @@ jobs:
             exit 0
           fi
           git diff --name-only HEAD^1 HEAD | tee changed.txt
-          if grep -qE '^(topdf/|packaging/|pyproject\.toml$|uv\.lock$|\.python-version$|\.github/workflows/windows-app\.yml$)' changed.txt; then
+          if grep -qE '^(topdf/|packaging/|pyproject\.toml$|uv\.lock$|\.python-version$|\.github/workflows/windows-app\.yml$|ci/(sbom|checksums)\.py$)' changed.txt; then
             echo "app=true" >> "$GITHUB_OUTPUT"
           else
             echo "Nothing the app is built from changed."
@@ -55,14 +60,19 @@ jobs:
     if: needs.changes.outputs.app == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
+    outputs:
+      zip_sha256: ${{ steps.hash.outputs.zip_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # Caches downloads except on tag pushes, so a release builds from
-      # nothing but the lock.
+      # A fixed uv: its CycloneDX export is a preview whose format may change
+      # between releases. Caches downloads except on tag pushes, so a release
+      # builds from nothing but the lock.
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
 
       # The Python in .python-version, the app's locked dependencies and the
       # packaging group; not the test tools.
@@ -93,10 +103,36 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path dist/FileToPDF -DestinationPath FileToPDF-windows.zip
 
+      # uv.lock's packages for the app, with PyPI's hashes.
+      - name: Export the app's locked packages as CycloneDX
+        run: uv export --frozen --no-dev --format cyclonedx1.5 --preview-features sbom-export --output-file "$env:RUNNER_TEMP\lock.cdx.json"
+
+      # Kept to the packages installed in this environment, plus CPython with
+      # Tcl/Tk, PyInstaller's bootloader and Chromium's headless shell.
+      - name: Write the software bill of materials
+        run: uv run --no-sync python ci/sbom.py "$env:RUNNER_TEMP\lock.cdx.json" FileToPDF-windows.cdx.json
+
+      - name: Write SHA256SUMS
+        run: uv run --no-sync python ci/checksums.py write SHA256SUMS FileToPDF-windows.zip FileToPDF-windows.cdx.json
+
+      # Hashed a second way, apart from ci/checksums.py; the later jobs check
+      # their download against this output as well as against SHA256SUMS.
+      - name: Record the zip's SHA-256 for the later jobs
+        id: hash
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath FileToPDF-windows.zip).Hash.ToLowerInvariant()
+          "zip_sha256=$hash" >> $env:GITHUB_OUTPUT
+          "FileToPDF-windows.zip SHA-256: $hash" >> $env:GITHUB_STEP_SUMMARY
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: FileToPDF-windows
-          path: FileToPDF-windows.zip
+          path: |
+            FileToPDF-windows.zip
+            FileToPDF-windows.cdx.json
+            SHA256SUMS
+          if-no-files-found: error
           retention-days: 14
 
   e2e:
@@ -119,6 +155,12 @@ jobs:
         with:
           name: FileToPDF-windows
           path: ${{ runner.temp }}/zip
+
+      # The zip under test must be the one the build job hashed.
+      - name: Check the download against the build's checksums
+        env:
+          ZIP_SHA256: ${{ needs.build.outputs.zip_sha256 }}
+        run: uv run --no-sync python ci/checksums.py check "$env:RUNNER_TEMP\zip\SHA256SUMS" "FileToPDF-windows.zip=$env:ZIP_SHA256"
 
       - name: Unzip the app into a fresh folder
         shell: pwsh
@@ -183,6 +225,20 @@ jobs:
         with:
           name: FileToPDF-windows
 
+      # The files to publish must be the ones the build job hashed and the
+      # e2e job tested: sha256sum checks SHA256SUMS, and the zip's hash must
+      # equal the build job's output.
+      - name: Check the download against the build's checksums
+        env:
+          ZIP_SHA256: ${{ needs.build.outputs.zip_sha256 }}
+        run: |
+          sha256sum --check --strict SHA256SUMS
+          actual=$(sha256sum FileToPDF-windows.zip | cut -d ' ' -f 1)
+          if [ -z "$ZIP_SHA256" ] || [ "$actual" != "$ZIP_SHA256" ]; then
+            echo "::error::FileToPDF-windows.zip has SHA-256 $actual, but the build job recorded '$ZIP_SHA256'."
+            exit 1
+          fi
+
       # Lets anyone check the zip came from this workflow:
       #     gh attestation verify FileToPDF-windows.zip -R PrashantKumarChem/file-to-pdf
       # GitHub only offers attestations for public repositories on this plan,
@@ -194,11 +250,11 @@ jobs:
         with:
           subject-path: FileToPDF-windows.zip
 
-      - name: Attach the zip to the release
+      - name: Attach the zip, its bill of materials and SHA256SUMS to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: >
-          gh release create "$TAG" FileToPDF-windows.zip
+          gh release create "$TAG" FileToPDF-windows.zip FileToPDF-windows.cdx.json SHA256SUMS
           --repo "$REPO" --title "File to PDF ${TAG#v}" --generate-notes
