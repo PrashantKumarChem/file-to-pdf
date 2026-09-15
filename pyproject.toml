@@ -33,6 +33,11 @@ packaging = [
     "pyinstaller==6.22.3",
     "pyinstaller-hooks-contrib==2026.7",
 ]
+# Supply-chain checks (.github/workflows/supply-chain.yml): uv sync --group audit
+audit = [
+    "pip-audit==2.10.1",
+    "zizmor==1.30.1",
+]
 
 [tool.uv]
 # topdf runs from the repository folder (python -m topdf); it isn't built or
