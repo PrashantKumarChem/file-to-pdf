@@ -125,6 +125,14 @@ jobs:
           "zip_sha256=$hash" >> $env:GITHUB_OUTPUT
           "FileToPDF-windows.zip SHA-256: $hash" >> $env:GITHUB_STEP_SUMMARY
 
+      # PROBE, never merge: one byte added to the zip after SHA256SUMS and the
+      # job output were written, so only SHA256SUMS's line can catch it.
+      - name: "Probe: change the zip after hashing"
+        shell: pwsh
+        run: |
+          [System.IO.File]::AppendAllText((Join-Path $PWD FileToPDF-windows.zip), "x")
+          "Changed zip SHA-256: " + (Get-FileHash -Algorithm SHA256 -LiteralPath FileToPDF-windows.zip).Hash.ToLowerInvariant()
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: FileToPDF-windows
