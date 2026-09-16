@@ -56,3 +56,17 @@ def test_a_status_with_no_url_still_gets_a_line():
     action, body = weekly_check.verdict({"statuses": [{"workflow": "Tests", "conclusion": "success"}]})
     assert action == "noop"
     assert "Tests: passing." in body
+
+
+def test_a_skipped_run_is_not_treated_as_failing():
+    skipped = {"workflow": "Windows app", "conclusion": "skipped", "url": "https://example.invalid/3"}
+    action, body = weekly_check.verdict({"statuses": [PASSING, skipped], "issue_open": None})
+    assert action == "noop"
+    assert "**skipped**" in body
+
+
+def test_a_cancelled_run_is_treated_as_failing():
+    cancelled = {"workflow": "Windows app", "conclusion": "cancelled", "url": "https://example.invalid/4"}
+    action, body = weekly_check.verdict({"statuses": [PASSING, cancelled], "issue_open": None})
+    assert action == "create"
+    assert "**cancelled**" in body

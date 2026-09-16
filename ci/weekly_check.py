@@ -39,10 +39,17 @@ def line(status: dict) -> str:
     return f"- {workflow}: **{conclusion}** ([latest run]({url}))." if url else f"- {workflow}: **{conclusion}**."
 
 
+# Not yet run (None) and "skipped" (nothing to do, such as a run GitHub never
+# started) aren't failures. Everything else -- "failure", "cancelled",
+# "timed_out", "action_required" -- is treated as one: a cancelled weekly run
+# is still a run that didn't finish and is worth a look, not routine noise.
+NOT_FAILING = (None, "success", "skipped")
+
+
 def verdict(state: dict) -> tuple[str, str]:
     """The action to take, and the issue body or comment to write."""
     statuses = state.get("statuses") or []
-    failing = [status for status in statuses if status.get("conclusion") not in (None, "success")]
+    failing = [status for status in statuses if status.get("conclusion") not in NOT_FAILING]
     body = "\n".join(
         [
             "The most recent weekly (or dispatched) run of each workflow this watches:",

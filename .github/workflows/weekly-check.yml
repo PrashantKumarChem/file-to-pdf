@@ -71,7 +71,9 @@ jobs:
           set -euo pipefail
           ids=$(gh api "repos/$REPO/actions/workflows?per_page=100" --jq '[.workflows[] | {name, id}]')
           statuses="[]"
-          for workflow in $(jq -r '.[]' <<< "$WATCHED"); do
+          # A read loop, not a `for workflow in $(...)`, which would split
+          # "Visual comparison" into two words.
+          while IFS= read -r workflow; do
             if [ "$workflow" = "$NAME" ]; then
               status=$(jq -n --arg workflow "$workflow" --arg conclusion "$CONCLUSION" --arg url "$URL" \
                 '{workflow: $workflow, conclusion: $conclusion, url: $url}')
@@ -87,11 +89,16 @@ jobs:
                 | jq --arg workflow "$workflow" '. + {workflow: $workflow}')
             fi
             statuses=$(jq --argjson status "$status" '. + [$status]' <<< "$statuses")
-          done
+          done < <(jq -r '.[]' <<< "$WATCHED")
+          # env.ISSUE_TITLE, not --arg: gh api's --jq has no --arg of its own.
           issue=$(gh api "repos/$REPO/issues?state=open&per_page=100" \
-            --jq --arg title "$ISSUE_TITLE" '[.[] | select(.title == $title and (.pull_request | not))][0].number // empty')
+            --jq '[.[] | select(.title == env.ISSUE_TITLE and (.pull_request | not))][0].number // empty')
+          # Not `select(. != "") | tonumber`: when that produces no value, the
+          # whole object construction produces none either, leaving
+          # state.json empty instead of holding "issue_open": null.
           jq -n --argjson statuses "$statuses" --arg issue "$issue" \
-            '{statuses: $statuses, issue_open: ($issue | select(. != "") | tonumber)}' > "$RUNNER_TEMP/state.json"
+            '{statuses: $statuses, issue_open: (if $issue == "" then null else ($issue | tonumber) end)}' \
+            > "$RUNNER_TEMP/state.json"
           cat "$RUNNER_TEMP/state.json"
           echo "issue=$issue" >> "$GITHUB_OUTPUT"
 
