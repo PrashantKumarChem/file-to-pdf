@@ -8,7 +8,7 @@ on Windows. Drop them on the window, or convert whole folders from the
 command line.**
 
 <p align="center">
-  <img src="docs/window.png" width="860" alt="The File to PDF window. At the top, a drop area lists the file types that convert: notebooks, JSON, Markdown, text and code. Below it, options for where PDFs are saved. The list shows six files: four marked done with the path of each PDF, one converting and one queued, with a progress bar reading 4 of 6 finished.">
+  <img src="docs/window.png" width="860" alt="The File to PDF window after converting a folder. At the top, a drop area lists the file types that convert: notebooks, JSON, Markdown, text and code. Below it, Next to each file is selected as where to save PDFs. The list shows six files, a notebook, a JSON file, a Markdown file, a Python script, a log and an XYZ file, each marked done with the path of its PDF, and the line below reads 6 converted.">
 </p>
 
 ## Why it exists
