@@ -43,6 +43,22 @@ names or extra sections to the output won't be merged.
 2. Run the window with `uv run python -m topdf.gui` or the command line with
    `uv run python -m topdf`.
 
+## Where things are
+
+| File | Purpose |
+| --- | --- |
+| `topdf/gui.py` | CustomTkinter window: drop zone, output options, queue list, hints and Help, worker thread |
+| `topdf/cli.py` | Command line: files, folders and wildcards, same output as the window |
+| `topdf/pipeline.py` | One file in, one PDF saved: output naming, retries, fallback folder, log |
+| `topdf/converters.py` | File type routing, text decoding, notebook export, HTML adapters and the HTML -> PDF engine |
+| `topdf/templates/topdf-notebook/` | nbconvert template for notebooks |
+| `File to PDF.vbs` | Starts the window from source with `.venv\Scripts\pythonw.exe` and no console window |
+| `pyproject.toml`, `uv.lock`, `.python-version` | Dependencies, the exact version of every package, and the Python version, for uv |
+| `packaging/` | PyInstaller spec, entry scripts and smoke test for the Windows app |
+| `ci/versions.py` | Checks that every version file agrees, and matches the tag on a release |
+| `tests/` | pytest suite, including a hidden-window GUI test and Chromium/nbconvert rendering tests |
+| `docs/window.png` | The screenshot in the README |
+
 ## Tests
 
 ```
@@ -109,7 +125,7 @@ Releases are made by hand:
 
 To build the zip without releasing, run **Actions → Build → Run workflow**; the
 zip is kept as a workflow artifact for 7 days. To build it on your own
-machine, see "Windows app without Python" in the README.
+machine, see "Building the Windows app" in the README.
 
 If you used AI tools, say so in the pull request description, as described in
 [AI_USAGE.md](AI_USAGE.md).
