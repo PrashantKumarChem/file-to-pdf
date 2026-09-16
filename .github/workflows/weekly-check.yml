@@ -1,0 +1,123 @@
+name: Weekly check
+
+# Keeps a single "Weekly check failed" issue in step with the weekly schedule
+# on Tests, Visual comparison, Supply chain and Windows app. Those four run on
+# every pull request and push too, but only their Monday runs (or a manual
+# dispatch standing in for one, which is how this is proven right after it
+# merges, without waiting for a Monday) answer "did something outside this
+# repository break", so only those decide the issue.
+#
+# On each of the four completing, this reads the payload's own result for
+# that one and, for the other three, each one's own most recent completed
+# schedule-or-dispatch run, decides what the issue should say
+# (ci/weekly_check.py), and opens, comments on or closes it, never opening a
+# second one.
+#
+# workflow_run only ever runs the copy of this file on the default branch, no
+# matter which branch the workflow it watches ran on, so a pull request that
+# changes this file can't try it against a real weekly run; only a
+# workflow_dispatch of one of the four, after this merges, can.
+
+on:
+  # zizmor: ignore[dangerous-triggers] this job never checks out or runs
+  # anything from the triggering run's own branch or PR: it reads only the
+  # completed run's name, conclusion and URL from the event payload, plus
+  # this file's own default-branch copy of ci/weekly_check.py.
+  workflow_run:
+    # Keep this list in step with WATCHED below: workflow_run matches by
+    # name, not file, so a renamed file needs no change here or there, but a
+    # renamed or added/removed workflow needs both updated together.
+    workflows: ["Tests", "Visual comparison", "Supply chain", "Windows app"]
+    types: [completed]
+
+permissions: {}
+
+# So two of the four completing together can't both see the issue closed and
+# both open a new one.
+concurrency:
+  group: weekly-check
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    if: github.event.workflow_run.event == 'schedule' || github.event.workflow_run.event == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # ci/weekly_check.py
+      actions: read # look up the other three workflows' own most recent runs
+      issues: write # open, comment on or close the issue
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      ISSUE_TITLE: "Weekly check failed"
+      WATCHED: '["Tests", "Visual comparison", "Supply chain", "Windows app"]'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The run that triggered this comes from its own payload, not
+      # re-fetched. The other three are looked up by name (the API takes a
+      # workflow's id or filename, never its display name), so a renamed
+      # workflow file doesn't need this workflow changed too.
+      - name: Gather every watched workflow's status
+        id: gather
+        env:
+          NAME: ${{ github.event.workflow_run.name }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          ids=$(gh api "repos/$REPO/actions/workflows?per_page=100" --jq '[.workflows[] | {name, id}]')
+          statuses="[]"
+          for workflow in $(jq -r '.[]' <<< "$WATCHED"); do
+            if [ "$workflow" = "$NAME" ]; then
+              status=$(jq -n --arg workflow "$workflow" --arg conclusion "$CONCLUSION" --arg url "$URL" \
+                '{workflow: $workflow, conclusion: $conclusion, url: $url}')
+            else
+              id=$(jq -r --arg name "$workflow" '.[] | select(.name == $name) | .id' <<< "$ids")
+              if [ -z "$id" ]; then
+                echo "::error::No workflow named \"$workflow\" (WATCHED and the workflows: trigger must list the same names)."
+                exit 1
+              fi
+              status=$(gh api "repos/$REPO/actions/workflows/$id/runs?per_page=10&status=completed" \
+                --jq '[.workflow_runs[] | select(.event == "schedule" or .event == "workflow_dispatch")][0]
+                      | if . then {conclusion: .conclusion, url: .html_url} else {conclusion: null, url: null} end' \
+                | jq --arg workflow "$workflow" '. + {workflow: $workflow}')
+            fi
+            statuses=$(jq --argjson status "$status" '. + [$status]' <<< "$statuses")
+          done
+          issue=$(gh api "repos/$REPO/issues?state=open&per_page=100" \
+            --jq --arg title "$ISSUE_TITLE" '[.[] | select(.title == $title and (.pull_request | not))][0].number // empty')
+          jq -n --argjson statuses "$statuses" --arg issue "$issue" \
+            '{statuses: $statuses, issue_open: ($issue | select(. != "") | tonumber)}' > "$RUNNER_TEMP/state.json"
+          cat "$RUNNER_TEMP/state.json"
+          echo "issue=$issue" >> "$GITHUB_OUTPUT"
+
+      - name: Decide what the issue should say
+        id: decide
+        run: python3 ci/weekly_check.py "$RUNNER_TEMP/state.json" "$RUNNER_TEMP/body.md" >> "$GITHUB_OUTPUT"
+
+      - name: Open, comment on or close the issue
+        if: steps.decide.outputs.action != 'noop'
+        env:
+          ACTION: ${{ steps.decide.outputs.action }}
+          ISSUE: ${{ steps.gather.outputs.issue }}
+        run: |
+          set -euo pipefail
+          case "$ACTION" in
+            create)
+              gh issue create --repo "$REPO" --title "$ISSUE_TITLE" --body-file "$RUNNER_TEMP/body.md"
+              ;;
+            comment)
+              gh issue comment "$ISSUE" --repo "$REPO" --body-file "$RUNNER_TEMP/body.md"
+              ;;
+            close)
+              gh issue close "$ISSUE" --repo "$REPO" --comment "$(cat "$RUNNER_TEMP/body.md")"
+              ;;
+            *)
+              echo "::error::ci/weekly_check.py printed an action this workflow doesn't know: $ACTION."
+              exit 1
+              ;;
+          esac

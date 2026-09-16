@@ -153,8 +153,8 @@ by script. The "app" check passes when all of that passes, or when nothing the
 app is built from changed.
 
 The app is built once, on Windows Server 2025. Pull requests test it there;
-release tags and manual runs of the workflow test the same zip on Windows
-Server 2022 and 2025, and every leg must pass.
+release tags, the weekly schedule and manual runs of the workflow test the
+same zip on Windows Server 2022 and 2025, and every leg must pass.
 
 The window test moves the real mouse, and the no-network test adds Windows
 Firewall rules, so run the suite on a machine nobody is using, elevated:
@@ -162,6 +162,22 @@ Firewall rules, so run the suite on a machine nobody is using, elevated:
 ```
 uv run python -m pytest packaging/e2e --app dist\FileToPDF
 ```
+
+## Keeping in step with the outside world
+
+Besides every pull request and every push to `main`, Tests, Visual
+comparison, Supply chain and Windows app also run once a week (Mondays, a few
+minutes apart from 06:17 UTC), so a runner image update, a new advisory, or a
+rendering change from something outside this repository is caught even when
+nothing here changes. The Windows app's weekly run builds and tests it on
+both Windows Server 2022 and 2025, the same as a release does, but publishes
+nothing: releasing stays tied to pushing a `v*` tag.
+
+When a weekly run fails, the Weekly check workflow
+(`.github/workflows/weekly-check.yml`, `ci/weekly_check.py`) opens a single
+"Weekly check failed" issue, or comments on it if one is already open, and
+closes it once every one of the four is passing again. It never opens a
+second issue.
 
 ## Pull requests
 
