@@ -1,0 +1,195 @@
+name: Ship
+
+# Merges the Release PR on the 1st of each month, so a release goes out
+# without anyone being there, and only when it is safe to: release-please must
+# have a Release PR open with notes in it, and GitHub must call that pull
+# request "clean", which means it can be merged and every check the main
+# ruleset requires has passed. Nothing else here is new: the merge starts the
+# Release workflow, which tags the commit, and the tag builds, tests,
+# publishes and checks the release (CONTRIBUTING.md, "Releases"). You can
+# still merge the Release PR yourself at any time; this only does it for you.
+#
+# The "decide" job reads and judges (ci/ship.py); it runs on this workflow's
+# own pull requests as well, so a change to it is seen deciding against the
+# real Release PR before it is merged. The "merge" job is the only one that
+# writes anything, and it runs only for the monthly schedule or a manual run
+# that asks for the merge. Its token comes from the release GitHub App, whose
+# key belongs to the "release" environment, which only main may use: a merge
+# made with the workflow's own token would start no checks on the tag it
+# leads to.
+
+on:
+  schedule:
+    # 07:37 UTC on the 1st of the month. Not on the hour: GitHub delays
+    # scheduled runs most when every repository asks for the same minute.
+    - cron: "37 7 1 * *"
+  workflow_dispatch:
+    inputs:
+      merge:
+        description: Merge the Release PR, instead of only saying what would happen
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - .github/workflows/ship.yml
+      - ci/ship.py
+      - tests/test_ship.py
+
+permissions: {}
+
+# The Release workflow opens and updates the Release PR under this group, so a
+# merge here never races an update there.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    # Long enough for the wait below, which a scheduled run needs when the
+    # Release PR's checks are still running.
+    timeout-minutes: 60
+    permissions:
+      contents: read # the manifest and the changelog at the Release PR's head
+      pull-requests: read # find the Release PR and read its state
+      checks: read # whether its checks are still running
+    outputs:
+      ship: ${{ steps.decide.outputs.ship }}
+      number: ${{ steps.decide.outputs.number }}
+      version: ${{ steps.decide.outputs.version }}
+      head: ${{ steps.decide.outputs.head }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Everything ci/ship.py judges, in one file. The numbers come from the
+      # open pull requests on release-please's branch; the rest is fetched for
+      # the one Release PR there should be, at the exact commit it has now.
+      - name: Gather the Release PR's state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # Only a run that would merge waits for checks that are still
+          # running, and never longer than this; a dry run reports what it
+          # sees at once.
+          WAIT_MINUTES: ${{ (github.event_name == 'schedule' || inputs.merge) && '45' || '0' }}
+        run: |
+          set -euo pipefail
+          numbers=$(gh api "repos/$REPO/pulls?state=open&base=main&per_page=100" \
+            --jq '[.[] | select(.head.ref | startswith("release-please--branches--main")) | .number]')
+          echo "Open Release PRs: $numbers"
+          echo 'null' > "$RUNNER_TEMP/pull.json"
+          echo 'null' > "$RUNNER_TEMP/manifest.json"
+          : > "$RUNNER_TEMP/notes.md"
+          if [ "$(jq 'length' <<< "$numbers")" = "1" ]; then
+            number=$(jq -r '.[0]' <<< "$numbers")
+            deadline=$(( $(date +%s) + WAIT_MINUTES * 60 ))
+            # "mergeable" is worked out when asked for, and the checks the
+            # ruleset requires take their time, so ask again while they run.
+            while : ; do
+              gh api "repos/$REPO/pulls/$number" > "$RUNNER_TEMP/pull.json"
+              head=$(jq -r '.head.sha' "$RUNNER_TEMP/pull.json")
+              merge_state=$(jq -r '.mergeable_state' "$RUNNER_TEMP/pull.json")
+              running=$(gh api "repos/$REPO/commits/$head/check-runs?per_page=100" \
+                --jq '[.check_runs[] | select(.status != "completed")] | length')
+              echo "#$number at ${head:0:7}: $merge_state, with $running checks still running."
+              if [ "$merge_state" != "unknown" ] && [ "$running" = "0" ]; then
+                break
+              fi
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "Not waiting any longer; deciding on what it says now."
+                break
+              fi
+              sleep 60
+            done
+            gh api "repos/$REPO/contents/.release-please-manifest.json?ref=$head" \
+              -H "Accept: application/vnd.github.raw" > "$RUNNER_TEMP/manifest.json"
+            gh api "repos/$REPO/contents/CHANGELOG.md?ref=$head" \
+              -H "Accept: application/vnd.github.raw" > "$RUNNER_TEMP/changelog.md"
+            version=$(jq -r '."." // empty' "$RUNNER_TEMP/manifest.json")
+            # The notes the release itself would publish, written by the same
+            # script from the changelog this Release PR wrote. An empty file
+            # is left when there are none, and ci/ship.py doesn't ship that.
+            if [ -n "$version" ]; then
+              python3 ci/release_notes.py "v$version" "$RUNNER_TEMP/changelog.md" "$RUNNER_TEMP/notes.md" \
+                || : > "$RUNNER_TEMP/notes.md"
+            fi
+          fi
+          jq -n --argjson numbers "$numbers" \
+            --slurpfile pull "$RUNNER_TEMP/pull.json" \
+            --slurpfile manifest "$RUNNER_TEMP/manifest.json" \
+            --rawfile notes "$RUNNER_TEMP/notes.md" \
+            '{numbers: $numbers, pull: $pull[0], manifest: $manifest[0], notes: $notes}' \
+            > "$RUNNER_TEMP/state.json"
+
+      # The script needs only Python's standard library.
+      - name: Decide whether to ship
+        id: decide
+        run: |
+          set +e
+          python3 ci/ship.py "$RUNNER_TEMP/state.json" \
+            > "$RUNNER_TEMP/outputs.txt" 2> "$RUNNER_TEMP/reason.txt"
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/reason.txt"
+          cat "$RUNNER_TEMP/outputs.txt" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/reason.txt" >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Say what a run that doesn't merge would have done
+        if: github.event_name != 'schedule' && !inputs.merge
+        env:
+          SHIP: ${{ steps.decide.outputs.ship }}
+          NUMBER: ${{ steps.decide.outputs.number }}
+        run: |
+          if [ "$SHIP" = "true" ]; then
+            echo "This run doesn't merge. A monthly run would merge #$NUMBER now." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "This run doesn't merge, and a monthly run wouldn't either." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # The only job that writes, and the only one that reads the app's key.
+  merge:
+    needs: decide
+    if: >-
+      needs.decide.outputs.ship == 'true'
+      && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.merge))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions: {}
+    steps:
+      - name: Get a token from the release app
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write # the merge commit on main
+          permission-pull-requests: write # merge the pull request
+
+      # The app is no bypass actor in the main ruleset, so GitHub merges this
+      # only if the required checks really have passed: the check in ci/ship.py
+      # decides whether to try, and the ruleset decides whether it may.
+      - name: Merge the Release PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ needs.decide.outputs.number }}
+          VERSION: ${{ needs.decide.outputs.version }}
+          HEAD: ${{ needs.decide.outputs.head }}
+        run: |
+          set -euo pipefail
+          # --match-head-commit: release-please rewrites the Release PR's
+          # branch whenever main changes, so what is merged must be the commit
+          # the decide job judged. A merge commit, the only method the ruleset
+          # allows.
+          gh pr merge "$NUMBER" --repo "$REPO" --merge --match-head-commit "$HEAD"
+          read -r merged sha < <(gh api "repos/$REPO/pulls/$NUMBER" --jq '"\(.merged) \(.merge_commit_sha)"')
+          if [ "$merged" != "true" ]; then
+            echo "::error::Release PR #$NUMBER isn't merged after the merge (merged=$merged)."
+            exit 1
+          fi
+          echo "Merged Release PR #$NUMBER as $sha; the Release workflow tags it v$VERSION."
+          echo "Merged Release PR #$NUMBER, releasing $VERSION, as \`$sha\`." >> "$GITHUB_STEP_SUMMARY"
