@@ -25,6 +25,10 @@ jobs:
           persist-credentials: false
 
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          # No Actions cache: the locked packages download in seconds, and a
+          # cache would keep about 110 MB in the repository's storage.
+          enable-cache: false
 
       # The app's locked dependencies and PyInstaller; not the test tools.
       - name: Install Python and the locked dependencies
@@ -54,12 +58,15 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path dist/FileToPDF -DestinationPath FileToPDF-windows.zip
 
+      # A run started by hand keeps the zip for 7 days. A tag run doesn't
+      # upload it: the release below holds the only copy.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         with:
           name: FileToPDF-windows
           path: FileToPDF-windows.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
       # GitHub writes the notes from the pull requests merged since the last
       # release; edit them on the release page afterwards if you like.

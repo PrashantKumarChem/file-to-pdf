@@ -108,7 +108,7 @@ Releases are made by hand:
    if you like.
 
 To build the zip without releasing, run **Actions → Build → Run workflow**; the
-zip is kept as a workflow artifact for 14 days. To build it on your own
+zip is kept as a workflow artifact for 7 days. To build it on your own
 machine, see "Windows app without Python" in the README.
 
 If you used AI tools, say so in the pull request description, as described in

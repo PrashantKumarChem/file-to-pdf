@@ -28,6 +28,10 @@ jobs:
           persist-credentials: false
 
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          # No Actions cache: the locked packages download in seconds, and a
+          # cache would keep about 110 MB in the repository's storage.
+          enable-cache: false
 
       - name: Install Python and the locked dependencies
         id: sync
