@@ -243,6 +243,16 @@ Release workflow (`.github/workflows/release.yml`):
    opened. Nothing is deleted: removing a release or a tag is the owner's
    call.
 
+On the 1st of each month the Ship workflow (`.github/workflows/ship.yml`)
+merges the Release PR for you, so a release goes out with nobody there. It
+merges only a Release PR that GitHub calls "clean" — mergeable, with every
+check the ruleset requires passed — and that release-please has written notes
+for; otherwise its run says why, and the next month, or you, tries again. It
+merges as the release app, which the ruleset gives no way past the checks, so
+it can merge nothing you couldn't. Merging the Release PR yourself, at any
+time, does exactly the same thing. A run started by hand (Actions → Ship → Run
+workflow) only says what it would do, unless you tick "Merge the Release PR".
+
 Don't edit the Release PR by hand: release-please rewrites its branch whenever
 `main` changes. To choose a version yourself, 1.0.0 for example, add
 `"release-as": "1.0.0"` under `packages` → `"."` in
