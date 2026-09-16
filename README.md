@@ -37,8 +37,9 @@ Download the Windows app, which needs no Python install, from
 
 ## The window
 
-- **Adding files.** Drop files or folders anywhere on the window, click the
-  drop area, press Ctrl+O or use "Add files". A dropped folder adds the files
+- **Adding files.** The drop area lists the file types that convert. Drop
+  files or folders anywhere on the window, click the drop area, press Ctrl+O
+  or use "Add files". A dropped folder adds the files
   in it that print, as the command line does without `--recursive`; the line
   under the list says how many it left out.
 - **The list.** Each file shows its status (✓ done, ⚠ saved with a warning or

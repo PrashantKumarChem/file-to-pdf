@@ -368,3 +368,13 @@ def test_empty_list_describes_what_the_window_does(app):
     text = app.empty_label.cget("text")
     for capability in ("folders", "Ctrl+O", "Notebooks", "JSON, Markdown, code and text", "Double-click", "F1"):
         assert capability in text
+
+
+def test_drop_area_lists_only_types_that_convert(app, tmp_path):
+    listed = [ext for line in gui.FILE_TYPE_LINES for _kind, exts in line for ext in exts if ext.startswith(".")]
+    assert ".ipynb" in listed and ".json" in listed and ".md" in listed and ".py" in listed
+    for ext in listed:
+        assert converters.is_recognized(tmp_path / f"a{ext}"), ext
+    shown = " ".join(w.cget("text") for w in app.drop_widgets if isinstance(w, gui.ctk.CTkLabel))
+    for ext in listed:
+        assert ext in shown

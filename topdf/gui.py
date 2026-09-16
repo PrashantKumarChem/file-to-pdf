@@ -50,6 +50,40 @@ ACCENT = ("#3B8ED0", "#1F6AA5")
 # How long a short message ("Copied ...") replaces the batch summary.
 FLASH_MS = 4000
 
+# The drop area lists what converts, one line per group of (kind, extensions).
+# Every extension here must be one converters.py recognizes (a test checks);
+# code is a sample of the several hundred Pygments knows.
+FILE_TYPE_LINES = [
+    [
+        ("Notebooks", [".ipynb"]),
+        ("JSON", [".json"]),
+        ("Markdown", [".md", ".markdown"]),
+        ("Text", [".txt", ".log", ".csv", ".dat", ".out"]),
+    ],
+    [
+        (
+            "Code",
+            [
+                ".py",
+                ".R",
+                ".jl",
+                ".m",
+                ".js",
+                ".ts",
+                ".c",
+                ".cpp",
+                ".java",
+                ".sh",
+                ".sql",
+                ".tex",
+                ".yaml",
+                "and hundreds more",
+            ],
+        ),
+    ],
+]
+OTHER_FILES_NOTE = "Any other file that reads as text (.xyz, .inp, .gjf …) prints as plain text."
+
 # Shown in the empty list: what the window can do, before anything is added.
 EMPTY_LIST_TEXT = """\
 Nothing here yet. What File to PDF does:
@@ -229,7 +263,7 @@ class App:
         self.root = root
         root.title(APP_NAME)
         root.geometry("860x600")
-        root.minsize(700, 480)
+        root.minsize(700, 540)
 
         self.output_mode = tk.StringVar(value="local")
         self.custom_output_dir: Path | None = None
@@ -297,23 +331,38 @@ class App:
         Tooltip(help_button, "What File to PDF can do, and its keyboard shortcuts (F1).")
 
         # --- drop zone -------------------------------------------------------
-        self.drop_zone = drop = ctk.CTkFrame(root, height=96, corner_radius=12, border_width=2)
+        self.drop_zone = drop = ctk.CTkFrame(root, height=168, corner_radius=12, border_width=2)
         drop.grid(row=1, column=0, sticky="ew", padx=16, pady=8)
         drop.grid_propagate(False)
         drop.grid_columnconfigure(0, weight=1)
-        drop.grid_rowconfigure((0, 3), weight=1)
+        drop.grid_rowconfigure((0, 5), weight=1)
         self._drop_colors = {"fg_color": drop.cget("fg_color"), "border_color": drop.cget("border_color")}
         self.drop_label = ctk.CTkLabel(
             drop, text="Drop files or folders here", font=ctk.CTkFont(size=16, weight="bold")
         )
         self.drop_label.grid(row=1, column=0)
-        self.drop_hint = ctk.CTkLabel(
-            drop,
-            text="or click to choose files  ·  notebooks, JSON, Markdown, code and text files",
-            text_color=muted,
+        self.drop_hint = ctk.CTkLabel(drop, text="or click to choose files", text_color=muted)
+        self.drop_hint.grid(row=2, column=0, pady=(0, 4))
+        # The file types, one line per group: a bold kind, then its extensions.
+        self.drop_widgets: list[Any] = [drop, self.drop_label, self.drop_hint]
+        for row, line in enumerate(FILE_TYPE_LINES, start=3):
+            line_frame = ctk.CTkFrame(drop, fg_color="transparent")
+            line_frame.grid(row=row, column=0)
+            self.drop_widgets.append(line_frame)
+            for kind, extensions in line:
+                kind_label = ctk.CTkLabel(line_frame, text=kind, font=ctk.CTkFont(size=12, weight="bold"), height=20)
+                kind_label.pack(side="left", padx=(12, 5))
+                ext_label = ctk.CTkLabel(
+                    line_frame, text="  ".join(extensions), font=ctk.CTkFont(size=12), text_color=muted, height=20
+                )
+                ext_label.pack(side="left")
+                self.drop_widgets += [kind_label, ext_label]
+        self.drop_note = ctk.CTkLabel(
+            drop, text=OTHER_FILES_NOTE, font=ctk.CTkFont(size=12), text_color=muted, height=20
         )
-        self.drop_hint.grid(row=2, column=0)
-        for w in (drop, self.drop_label, self.drop_hint):
+        self.drop_note.grid(row=5, column=0, sticky="n", pady=(2, 0))
+        self.drop_widgets.append(self.drop_note)
+        for w in self.drop_widgets:
             w.configure(cursor="hand2")
             w.bind("<Button-1>", lambda e: self._browse_files())
             Tooltip(
@@ -451,7 +500,7 @@ class App:
         )
 
         # Drops land anywhere in the window, not only on the drop zone.
-        for w in (root, drop, self.drop_label, self.drop_hint, self.tree, self.empty_label):
+        for w in (root, *self.drop_widgets, self.tree, self.empty_label):
             accept_file_drops(w, self._on_drop, self._on_drag_enter, self._on_drag_leave)
         root.bind("<Control-o>", lambda e: self._browse_files())
         root.bind("<Control-O>", lambda e: self._browse_files())
