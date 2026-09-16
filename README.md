@@ -130,7 +130,7 @@ GitHub Actions builds a standalone copy with PyInstaller
 (`packaging/topdf.spec`, workflow `.github/workflows/build.yml`) and
 checks it with `packaging/smoke_test.py`. Pushing a `v*` tag attaches
 `FileToPDF-windows.zip` to a GitHub release; a run started by hand keeps the
-zip as a workflow artifact. Download the latest zip from
+zip as a workflow artifact for 7 days. Download the latest zip from
 [Releases](https://github.com/PrashantKumarChem/file-to-pdf/releases/latest).
 
 Unzip it to a short folder path and run the programs below. Chromium sits

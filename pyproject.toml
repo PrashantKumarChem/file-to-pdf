@@ -1,6 +1,6 @@
 [project]
 name = "file-to-pdf"
-version = "0.3.0"
+version = "1.0.0"
 description = "Convert Jupyter notebooks, JSON, Markdown, code and text files to PDF, 1:1."
 requires-python = ">=3.14"
 # What the app runs on. uv.lock pins these and everything they pull in, with

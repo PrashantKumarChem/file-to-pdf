@@ -11,7 +11,7 @@ authors:
 repository-code: "https://github.com/PrashantKumarChem/file-to-pdf"
 license: MIT
 # Raise both with each release (CONTRIBUTING.md, "Releases").
-version: 0.3.0
+version: 1.0.0
 date-released: 2026-09-16
 keywords:
   - pdf

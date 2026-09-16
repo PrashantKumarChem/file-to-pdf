@@ -97,8 +97,8 @@ Releases are made by hand:
    ```
    git switch main
    git pull
-   git tag v0.4.0
-   git push origin v0.4.0
+   git tag v1.1.0
+   git push origin v1.1.0
    ```
 
 3. The tag starts the Build workflow (`.github/workflows/build.yml`). It checks
