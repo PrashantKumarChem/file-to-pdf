@@ -4,20 +4,10 @@ Notable changes to File to PDF, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
-
-### Changed
-
-- The Windows app is built with Python 3.14 (was 3.12), whose Tk is 9.0.
-  (#19)
-- Files are printed by the Chromium 151 in Playwright 1.62 (was Chromium 149),
-  with IPython 9.17, Pygments 2.21, Markdown 3.10.3 and tkinterdnd2 0.6.3. Of
-  13 notebooks and files compared page by page, none prints differently.
-  (#19)
-- Running from source needs Python 3.14. uv installs it and the exact package
-  versions in `uv.lock`, and `pyproject.toml` replaces the requirements files.
-  `File to PDF.vbs` starts the window from the `.venv` that `uv sync` creates.
-  (#19)
+Each new section is written by
+[release-please](https://github.com/googleapis/release-please) from the pull
+request titles merged since the last release, in its Release PR
+(CONTRIBUTING.md, "Releases"), so there is no section for unreleased changes.
 
 ## [0.2.0] - 2026-09-14
 
@@ -59,6 +49,5 @@ window and a command line. It prints Jupyter notebooks, and JSON, Markdown,
 code and text files 1:1. Files converted together share one browser. PDFs go
 to `%USERPROFILE%\Notebook PDFs` and the log to `%LOCALAPPDATA%\NotebookToPDF`.
 
-[Unreleased]: https://github.com/PrashantKumarChem/file-to-pdf/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/PrashantKumarChem/file-to-pdf/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/PrashantKumarChem/file-to-pdf/releases/tag/v0.1.0
