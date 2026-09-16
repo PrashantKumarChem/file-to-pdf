@@ -1,7 +1,11 @@
 # File to PDF
 
-[![Tests](https://github.com/PrashantKumarChem/file-to-pdf/actions/workflows/tests.yml/badge.svg)](https://github.com/PrashantKumarChem/file-to-pdf/actions/workflows/tests.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/PrashantKumarChem/file-to-pdf?label=release)](https://github.com/PrashantKumarChem/file-to-pdf/releases/latest)
+[![Tests](https://img.shields.io/github/actions/workflow/status/PrashantKumarChem/file-to-pdf/tests.yml?branch=main&label=tests)](https://github.com/PrashantKumarChem/file-to-pdf/actions/workflows/tests.yml)
+[![Lint](https://img.shields.io/github/actions/workflow/status/PrashantKumarChem/file-to-pdf/lint.yml?branch=main&label=lint)](https://github.com/PrashantKumarChem/file-to-pdf/actions/workflows/lint.yml)
+[![Python version](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FPrashantKumarChem%2Ffile-to-pdf%2Fmain%2Fpyproject.toml&label=python&logo=python&logoColor=white)](pyproject.toml)
+[![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6)](#download)
+[![License](https://img.shields.io/github/license/PrashantKumarChem/file-to-pdf)](LICENSE)
 
 **Turn Jupyter notebooks, JSON, Markdown, code and text files into clean PDFs
 on Windows. Drop them on the window, or convert whole folders from the
