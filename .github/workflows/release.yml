@@ -81,7 +81,13 @@ jobs:
           client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write # create the tag
-          permission-issues: write # change the pull request's labels
+          # The labels are read and written through repos/.../issues/N/labels,
+          # but they sit on a pull request, and GitHub governs a pull
+          # request's labels with the pull-requests permission. With issues
+          # alone both the read and the write answer 403, which is what
+          # happened the first time this step ran, on v0.3.0.
+          permission-issues: write # the endpoint is the issues one
+          permission-pull-requests: write # the labels are on a pull request
 
       # Safe to re-run: an existing tag on this commit is kept, one on another
       # commit fails the step.
