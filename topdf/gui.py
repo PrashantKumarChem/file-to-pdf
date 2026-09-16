@@ -58,11 +58,11 @@ FILE_TYPE_LINES = [
         ("Notebooks", [".ipynb"]),
         ("JSON", [".json"]),
         ("Markdown", [".md", ".markdown"]),
-        ("Text", [".txt", ".log", ".csv", ".dat", ".out"]),
+        ("Text, as written", [".txt", ".log", ".csv", ".dat", ".out"]),
     ],
     [
         (
-            "Code",
+            "Code, as highlighted source",
             [
                 ".py",
                 ".R",
@@ -103,7 +103,9 @@ HELP_SECTIONS = [
         "Jupyter notebooks (.ipynb) are exported the way nbconvert prints them, with long code lines, output "
         "tables and wide figures wrapped or scaled to fit the page.\n"
         "JSON, Markdown, code and plain text print 1:1: JSON and code highlighted exactly as written, Markdown as "
-        "the rendered document. The PDF holds the file's content and nothing else: no heading, no file name.\n"
+        "the rendered document. Code prints as its source, so .html and .tex give the markup rather than the "
+        "rendered page, and .csv gives its lines as written rather than a table. The PDF holds the file's "
+        "content and nothing else: no heading, no file name.\n"
         "Files of any other type print as text if they read as text (.xyz, .log, input decks). Binary files, such "
         "as images, fail with a message instead of printing garbage.",
     ),
