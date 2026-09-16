@@ -245,9 +245,9 @@ class App:
         self.full_message_by_row: dict[str, str] = {}
         self.saved_path_by_row: dict[str, Path] = {}
         self.state_by_row: dict[str, str] = {}
-        # Rows removed from the list (Clear list, Delete). The worker skips a
-        # removed row's job that hasn't started yet; set membership is safe to
-        # read from the worker thread.
+        # Unfinished rows removed from the list (Clear list, Delete). The worker
+        # skips a removed row's job that hasn't started yet and forgets each id
+        # once its job is handled; set operations are safe across the threads.
         self._removed_rows: set[str] = set()
         # Jobs are (row_id, path, output_dir); results are (row_id, Result),
         # with None as the Result meaning "started". Keying by Treeview row id
@@ -678,6 +678,7 @@ class App:
                     if row_id not in self._removed_rows:
                         self.result_queue.put((row_id, None))
                         self.result_queue.put((row_id, pipeline.convert_any(path, output_dir)))
+                    self._removed_rows.discard(row_id)
                     try:
                         job = self.work_queue.get_nowait()
                     except queue.Empty:
@@ -760,7 +761,8 @@ class App:
 
     def _remove_rows(self, row_ids):
         for row_id in row_ids:
-            self._removed_rows.add(row_id)
+            if self.state_by_row.get(row_id) == PENDING:
+                self._removed_rows.add(row_id)
             self.tree.delete(row_id)
             self.full_message_by_row.pop(row_id, None)
             self.saved_path_by_row.pop(row_id, None)

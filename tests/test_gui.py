@@ -253,6 +253,11 @@ def test_removed_rows_are_not_converted(app, monkeypatch, tmp_path):
     rows = run_until_settled(app)
     assert rows == [("d.json", "✓ Done")]
     assert rendered == ["a.json", "d.json"]
+    # Every removed id was handled by the worker and forgotten; a finished
+    # row removed later is never recorded.
+    assert app._removed_rows == set()
+    app._clear_list()
+    assert app._removed_rows == set()
 
 
 def test_summary_and_progress_follow_the_rows(app, tmp_path):
