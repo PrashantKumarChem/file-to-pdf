@@ -3,9 +3,9 @@
 [![Tests](https://github.com/PrashantKumarChem/file-to-pdf/actions/workflows/tests.yml/badge.svg)](https://github.com/PrashantKumarChem/file-to-pdf/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A small Windows desktop tool that turns files into PDFs. Drop files onto the
-window, pick them with the Open dialog, or convert whole folders from the
-command line.
+A small Windows desktop tool that turns files into PDFs. Drop files or
+folders onto the window, pick files with the Open dialog, or convert whole
+folder trees from the command line.
 
 Download the Windows app, which needs no Python install, from
 [Releases](https://github.com/PrashantKumarChem/file-to-pdf/releases/latest).
@@ -25,7 +25,7 @@ Download the Windows app, which needs no Python install, from
 
 | File | Purpose |
 | --- | --- |
-| `topdf/gui.py` | CustomTkinter window: drop zone, output options, queue list, worker thread |
+| `topdf/gui.py` | CustomTkinter window: drop zone, output options, queue list, hints and Help, worker thread |
 | `topdf/cli.py` | Command line: files, folders and wildcards, same output as the window |
 | `topdf/pipeline.py` | One file in, one PDF saved: output naming, retries, fallback folder, log |
 | `topdf/converters.py` | File type routing, text decoding, notebook export, HTML adapters and the HTML -> PDF engine |
@@ -34,6 +34,26 @@ Download the Windows app, which needs no Python install, from
 | `pyproject.toml`, `uv.lock`, `.python-version` | Dependencies, the exact version of every package, and the Python version, for uv |
 | `packaging/` | PyInstaller spec, entry scripts and smoke test for the Windows app |
 | `tests/` | pytest suite, including a hidden-window GUI test and Chromium/nbconvert rendering tests |
+
+## The window
+
+- **Adding files.** The drop area lists the file types that convert. Drop
+  files or folders anywhere on the window, click the drop area, press Ctrl+O
+  or use "Add files". A dropped folder adds the files
+  in it that print, as the command line does without `--recursive`; the line
+  under the list says how many it left out.
+- **The list.** Each file shows its status (✓ done, ⚠ saved with a warning or
+  to the fallback folder, ✕ failed) and where its PDF was saved. The line
+  under the list counts what has finished, with a progress bar while files
+  are converting. Double-click a file to open its PDF; right-click for Open
+  PDF, Show in folder, Copy details and Remove from list. Delete removes the
+  selected rows and Ctrl+C copies a row's details. Removing a row, or "Clear
+  list", skips files that haven't started yet; the one converting finishes.
+- **Hints.** The empty list sums up what the tool does, every control
+  explains itself when the pointer rests on it, and "Help" (F1) lists
+  everything, including the keyboard shortcuts and the command line.
+- **Settings.** The output choice, "Open folder when done" and the theme last
+  until the window closes; they aren't saved between runs.
 
 ## Behavior worth knowing
 
@@ -70,7 +90,7 @@ Download the Windows app, which needs no Python install, from
   restarted and that file is tried once more.
 - **Log.** Each conversion is appended to
   `%LOCALAPPDATA%\File to PDF\conversion_log.txt`; past 1 MB it moves to
-  `conversion_log.old.txt`. "Open full log" in the window opens it.
+  `conversion_log.old.txt`. "Open log" in the window opens it.
 
 ## Command line
 
@@ -110,7 +130,7 @@ GitHub Actions builds a standalone copy with PyInstaller
 (`packaging/topdf.spec`, workflow `.github/workflows/build.yml`) and
 checks it with `packaging/smoke_test.py`. Pushing a `v*` tag attaches
 `FileToPDF-windows.zip` to a GitHub release; a run started by hand keeps the
-zip as a workflow artifact. Download the latest zip from
+zip as a workflow artifact for 7 days. Download the latest zip from
 [Releases](https://github.com/PrashantKumarChem/file-to-pdf/releases/latest).
 
 Unzip it to a short folder path and run the programs below. Chromium sits

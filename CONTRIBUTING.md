@@ -97,8 +97,8 @@ Releases are made by hand:
    ```
    git switch main
    git pull
-   git tag v0.4.0
-   git push origin v0.4.0
+   git tag v1.1.0
+   git push origin v1.1.0
    ```
 
 3. The tag starts the Build workflow (`.github/workflows/build.yml`). It checks
@@ -108,7 +108,7 @@ Releases are made by hand:
    if you like.
 
 To build the zip without releasing, run **Actions → Build → Run workflow**; the
-zip is kept as a workflow artifact for 14 days. To build it on your own
+zip is kept as a workflow artifact for 7 days. To build it on your own
 machine, see "Windows app without Python" in the README.
 
 If you used AI tools, say so in the pull request description, as described in
