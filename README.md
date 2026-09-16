@@ -107,10 +107,10 @@ topdf notes.md --out C:\PDFs
 ## Windows app without Python
 
 GitHub Actions builds a standalone copy with PyInstaller
-(`packaging/topdf.spec`, workflow `.github/workflows/windows-app.yml`) and
+(`packaging/topdf.spec`, workflow `.github/workflows/build.yml`) and
 checks it with `packaging/smoke_test.py`. Pushing a `v*` tag attaches
-`FileToPDF-windows.zip` to a GitHub release; other runs keep the zip as a
-workflow artifact. Download the latest zip from
+`FileToPDF-windows.zip` to a GitHub release; a run started by hand keeps the
+zip as a workflow artifact. Download the latest zip from
 [Releases](https://github.com/PrashantKumarChem/file-to-pdf/releases/latest).
 
 Unzip it to a short folder path and run the programs below. Chromium sits
@@ -169,7 +169,9 @@ The GUI tests open a hidden window, so run them from a desktop session.
 
 ## Contributing
 
-Bug reports and pull requests are welcome; see
+File to PDF is parked: it's maintained for the author's own use, with no new
+features planned, and you're welcome to fork it. Bug reports and small fixes
+are still welcome; see
 [CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately as
 described in [SECURITY.md](SECURITY.md).
 

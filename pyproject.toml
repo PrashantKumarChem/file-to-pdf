@@ -4,7 +4,7 @@ version = "0.3.0"
 description = "Convert Jupyter notebooks, JSON, Markdown, code and text files to PDF, 1:1."
 requires-python = ">=3.14"
 # What the app runs on. uv.lock pins these and everything they pull in, with
-# checksums; Dependabot proposes updates.
+# checksums.
 dependencies = [
     "customtkinter==6.0.0",
     "tkinterdnd2==0.6.3",
@@ -20,27 +20,17 @@ dependencies = [
 # (uv run ruff check, uv run ruff format --check, uv run pyright).
 dev = [
     "pytest==9.1.1",
-    "coverage==7.16.1",
     "PyMuPDF==1.28.2",
     "psutil==7.2.2",
     "ruff==0.16.7",
     # The nodejs extra brings Node.js as a locked wheel instead of fetching it
     # when Pyright first runs.
     "pyright[nodejs]==1.1.414",
-    # Drives the packaged app's window in packaging/e2e.
-    "pywinauto==0.6.9",
 ]
 # Builds the Windows app: uv sync --group packaging
 packaging = [
     "pyinstaller==6.22.3",
     "pyinstaller-hooks-contrib==2026.7",
-]
-# Supply-chain checks (.github/workflows/supply-chain.yml): uv sync --group audit
-audit = [
-    "pip-audit==2.10.1",
-    "zizmor==1.30.1",
-    # Checks .github/dependabot.yml against the schema it bundles, offline.
-    "check-jsonschema==0.38.0",
 ]
 
 [tool.uv]
@@ -54,8 +44,6 @@ python-preference = "only-managed"
 [tool.ruff]
 # The longest line before Ruff was added was 116 characters.
 line-length = 120
-# Test input printed exactly as it is, not code of this project.
-extend-exclude = ["tests/visual/corpus"]
 
 [tool.ruff.lint]
 select = [
@@ -71,21 +59,8 @@ select = [
 
 [tool.pyright]
 include = ["topdf", "tests", "packaging", "ci"]
-exclude = ["tests/visual/corpus", "**/__pycache__"]
+exclude = ["**/__pycache__"]
 pythonVersion = "3.14"
 pythonPlatform = "Windows"
 venvPath = "."
 venv = ".venv"
-
-[tool.coverage.run]
-source = ["topdf"]
-branch = true
-
-[tool.coverage.report]
-precision = 1
-show_missing = true
-# The floor: "coverage report" fails below it. It may only rise, which
-# ci/coverage_floor.py checks against the base branch; raise it when tests
-# add coverage. Set at 91 when the Windows runner and a local run both
-# measured 91.4%, leaving room for thread timing in the GUI tests.
-fail_under = 91

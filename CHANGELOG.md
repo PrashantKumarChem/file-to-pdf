@@ -4,10 +4,8 @@ Notable changes to File to PDF, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-Each new section is written by
-[release-please](https://github.com/googleapis/release-please) from the pull
-request titles merged since the last release, in its Release PR
-(CONTRIBUTING.md, "Releases"), so there is no section for unreleased changes.
+Each release adds its section by hand (CONTRIBUTING.md, "Releases"). The 0.3.0
+section was written by release-please, which the project used then.
 
 ## [0.3.0](https://github.com/PrashantKumarChem/file-to-pdf/compare/v0.2.0...v0.3.0) (2026-09-16)
 

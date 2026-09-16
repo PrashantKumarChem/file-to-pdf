@@ -125,7 +125,6 @@ class App:
             w.configure(cursor="hand2")
             w.bind("<Button-1>", lambda e: self._browse_files())
             accept_file_drops(w, self._on_drop)
-        self._drop_frame = drop
 
         # --- options ---------------------------------------------------------
         opts = ctk.CTkFrame(root, corner_radius=12)
