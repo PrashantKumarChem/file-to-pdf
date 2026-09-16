@@ -1,0 +1,71 @@
+name: Build
+
+# Builds the standalone Windows app (packaging/topdf.spec), smoke-tests it and
+# zips it. Run it by hand (Actions -> Build -> Run workflow) to get the zip as
+# a workflow artifact, or push a v* tag to also attach it to a GitHub release
+# (CONTRIBUTING.md, "Releases").
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # create the release on a tag
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+
+      # The app's locked dependencies and PyInstaller; not the test tools.
+      - name: Install Python and the locked dependencies
+        run: uv sync --locked --no-dev --group packaging
+
+      # pyproject.toml, topdf/__init__.py, CITATION.cff and uv.lock must all
+      # say the tag's version. The tag name reaches the script as an
+      # environment variable, never pasted into its text.
+      - name: Check that the tag matches every version file
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: uv run --no-sync python ci/versions.py --tag "$env:TAG"
+
+      - name: Install Chromium's headless shell inside the Playwright package
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: "0"
+        run: uv run --no-sync python -m playwright install --only-shell chromium
+
+      - name: Build
+        run: uv run --no-sync python -m PyInstaller --noconfirm packaging/topdf.spec
+
+      - name: Smoke test
+        run: uv run --no-sync python packaging/smoke_test.py dist/FileToPDF
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/FileToPDF -DestinationPath FileToPDF-windows.zip
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: FileToPDF-windows
+          path: FileToPDF-windows.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      # GitHub writes the notes from the pull requests merged since the last
+      # release; edit them on the release page afterwards if you like.
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$env:TAG" FileToPDF-windows.zip --repo "$env:GITHUB_REPOSITORY" --verify-tag --title "File to PDF $($env:TAG.TrimStart('v'))" --generate-notes

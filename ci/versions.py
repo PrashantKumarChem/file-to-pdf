@@ -2,24 +2,19 @@
 
     python ci/versions.py [--tag TAG]
 
-Run from the repository's root. release-please raises the version in all of
-them in its Release PR: .release-please-manifest.json (its record of the
-current version), pyproject.toml, topdf/__init__.py, CITATION.cff and the
-project's own entry in uv.lock, which "uv lock --check" compares with
-pyproject.toml. release-please's updater for uv.lock changes nothing, and
-doesn't fail, when its JSONPath stops matching, so this check is what notices.
-With --tag, the tag (such as v0.3.0) must match as well.
+Run from the repository's root. A release raises the version by hand in
+pyproject.toml, topdf/__init__.py and CITATION.cff, then "uv lock" updates the
+project's own entry in uv.lock. With --tag, the tag (such as v0.3.0) must match
+as well; the Build workflow checks that before it releases.
 
 Exit code 0 when they agree, 1 when they don't or a file can't be read.
 """
 
-import json
 import re
 import sys
 import tomllib
 from pathlib import Path
 
-MANIFEST = ".release-please-manifest.json"
 INIT = "topdf/__init__.py"
 CITATION = "CITATION.cff"
 
@@ -32,7 +27,6 @@ def read_versions(root: Path) -> dict[str, str | None]:
     init = re.search(r'^__version__\s*=\s*"([^"]+)"', (root / INIT).read_text(encoding="utf-8"), re.MULTILINE)
     cited = re.search(r"^version:\s*['\"]?([^\s'\"#]+)", (root / CITATION).read_text(encoding="utf-8"), re.MULTILINE)
     return {
-        MANIFEST: json.loads((root / MANIFEST).read_text(encoding="utf-8")).get("."),
         "pyproject.toml": project.get("version"),
         INIT: init[1] if init else None,
         CITATION: cited[1] if cited else None,

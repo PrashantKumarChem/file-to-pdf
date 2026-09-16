@@ -1,6 +1,5 @@
 """ci/versions.py: every file holding the version, and the tag, agree."""
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -13,18 +12,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "ci" / "versions.py"
 
 
-def version_files(root, manifest="0.3.0", pyproject="0.3.0", init="0.3.0", citation="0.3.0", lock="0.3.0"):
+def version_files(root, pyproject="0.3.0", init="0.3.0", citation="0.3.0", lock="0.3.0"):
     (root / "topdf").mkdir()
-    (root / ".release-please-manifest.json").write_text(json.dumps({".": manifest}), encoding="utf-8")
     (root / "pyproject.toml").write_text(
         f'[project]\nname = "file-to-pdf"\nversion = "{pyproject}"\n', encoding="utf-8"
     )
-    (root / "topdf" / "__init__.py").write_text(
-        f'APP_NAME = "File to PDF"\n__version__ = "{init}"  # x-release-please-version\n', encoding="utf-8"
-    )
-    (root / "CITATION.cff").write_text(
-        f"cff-version: 1.2.0\nversion: {citation} # x-release-please-version\n", encoding="utf-8"
-    )
+    (root / "topdf" / "__init__.py").write_text(f'APP_NAME = "File to PDF"\n__version__ = "{init}"\n', encoding="utf-8")
+    (root / "CITATION.cff").write_text(f"cff-version: 1.2.0\nversion: {citation}\n", encoding="utf-8")
     (root / "uv.lock").write_text(
         f'version = 1\n\n[[package]]\nname = "altgraph"\nversion = "0.17.5"\n\n'
         f'[[package]]\nname = "file-to-pdf"\nversion = "{lock}"\nsource = {{ virtual = "." }}\n',
@@ -39,7 +33,7 @@ def test_matching_files_agree(tmp_path):
     assert message.endswith("all say 0.3.0.")
 
 
-@pytest.mark.parametrize("file", ["manifest", "pyproject", "init", "citation", "lock"])
+@pytest.mark.parametrize("file", ["pyproject", "init", "citation", "lock"])
 def test_one_file_behind_fails(tmp_path, file):
     ok, message = versions.verdict(versions.read_versions(version_files(tmp_path, **{file: "0.2.0"})))
     assert ok is False
