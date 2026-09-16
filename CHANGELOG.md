@@ -9,6 +9,13 @@ Each new section is written by
 request titles merged since the last release, in its Release PR
 (CONTRIBUTING.md, "Releases"), so there is no section for unreleased changes.
 
+## [0.3.0](https://github.com/PrashantKumarChem/file-to-pdf/compare/v0.2.0...v0.3.0) (2026-09-16)
+
+
+### Features
+
+* build the app with Python 3.14 and print with Chromium 151 ([09cdafd](https://github.com/PrashantKumarChem/file-to-pdf/commit/09cdafd597a0923f54a4b9f231efdb41b326be1c))
+
 ## [0.2.0] - 2026-09-14
 
 ### Changed
