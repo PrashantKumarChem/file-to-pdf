@@ -3,15 +3,18 @@ name: Windows app
 # Builds the standalone Windows app (packaging/topdf.spec) once, checks the
 # build with packaging/smoke_test.py, and tests the zip itself end to end
 # (packaging/e2e): unzipped into a fresh folder, topdf.exe on every file type
-# and the window driven by script, on Windows Server 2022 and 2025 for tags
-# and manual runs, and on Server 2025 for pull requests. The build job also
-# writes the zip's software bill of materials (ci/sbom.py) and SHA256SUMS
-# (ci/checksums.py),
+# and the window driven by script, on Windows Server 2022 and 2025 for tags,
+# the weekly schedule and manual runs, and on Server 2025 for pull requests.
+# The build job also writes the zip's software bill of materials (ci/sbom.py)
+# and SHA256SUMS (ci/checksums.py),
 # and every later job checks what it downloaded against those checksums and
 # the build job's own record of the zip's hash, so nothing is rebuilt or
 # swapped after testing. Pull requests build it when they touch the app's
 # code, its dependencies, its packaging or this workflow; the "app" job always
-# reports, so it can be a required check. Pushing a v* tag also releases the
+# reports, so it can be a required check. The weekly run always builds and
+# tests it, to catch a runner image update or a PyInstaller-side break with
+# nothing here changed; it never releases anything, which stays tag-only.
+# Pushing a v* tag also releases the
 # zip, its bill of materials and SHA256SUMS once every end-to-end leg passes:
 # as a draft first, whose files are checked again, then published, and then
 # checked once more from the release itself. If that last check fails, the
@@ -22,6 +25,8 @@ on:
   pull_request:
   push:
     tags: ["v*"]
+  schedule:
+    - cron: "43 6 * * 1" # Mondays, 06:43 UTC
   workflow_dispatch:
 
 permissions:

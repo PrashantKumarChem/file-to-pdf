@@ -2,12 +2,15 @@ name: Tests
 
 # Runs the pytest suite on Windows, the platform the app is for, with the
 # Python in .python-version and the packages in uv.lock: every pull request,
-# every push to main, and on demand.
+# every push to main, weekly (a runner image update can break a test that no
+# change here would), and on demand.
 
 on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "23 6 * * 1" # Mondays, 06:23 UTC
   workflow_dispatch:
 
 permissions:

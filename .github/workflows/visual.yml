@@ -6,12 +6,16 @@ name: Visual comparison
 # what caused the difference, and uploads the "visual-comparison" artifact:
 # before, after and difference images of the differing pages, both
 # renderings' PDFs, and the new fingerprints. If the new rendering is right,
-# run "Accept new rendering" (accept-rendering.yml) for the pull request.
+# run "Accept new rendering" (accept-rendering.yml) for the pull request. Also
+# weekly, because a Chromium or nbconvert update can change a rendering
+# without any change here.
 
 on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "31 6 * * 1" # Mondays, 06:31 UTC
   workflow_dispatch:
 
 permissions:
